@@ -24,8 +24,43 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 
+                     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
+                     process.env.SUPABASE_SERVICE_ROLE_KEY || 
+                     process.env.SUPABASE_ANON_KEY || 
+                     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
 async function readDB() {
-  // If Vercel KV / Upstash environment variables exist, read from Cloud DB!
+  // 1. If Supabase environment variables exist, read from Supabase Cloud!
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?id=eq.capaian_db&select=data`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0 && rows[0].data) {
+        const parsed = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+        if (!Array.isArray(parsed.petugas_master)) parsed.petugas_master = [];
+        if (!Array.isArray(parsed.capaian)) parsed.capaian = [];
+
+        if (parsed.petugas_master.length === 0 && fs.existsSync(INITIAL_DB_FILE)) {
+          const initRaw = fs.readFileSync(INITIAL_DB_FILE, 'utf-8');
+          const initParsed = JSON.parse(initRaw);
+          parsed.petugas_master = initParsed.petugas_master || [];
+          await writeDB(parsed);
+        }
+        return parsed;
+      }
+    } catch (err) {
+      console.error('Error reading Supabase DB, fallbacking...', err);
+    }
+  }
+
+  // 2. If Vercel KV / Upstash environment variables exist, read from KV!
   if (KV_URL && KV_TOKEN) {
     try {
       const res = await fetch(`${KV_URL}/get/capaian_db`, {
@@ -37,7 +72,6 @@ async function readDB() {
         if (!Array.isArray(parsed.petugas_master)) parsed.petugas_master = [];
         if (!Array.isArray(parsed.capaian)) parsed.capaian = [];
 
-        // If cloud master data is empty, seed from local master data
         if (parsed.petugas_master.length === 0 && fs.existsSync(INITIAL_DB_FILE)) {
           const initRaw = fs.readFileSync(INITIAL_DB_FILE, 'utf-8');
           const initParsed = JSON.parse(initRaw);
@@ -51,7 +85,7 @@ async function readDB() {
     }
   }
 
-  // Fallback to local file /tmp or data/db.json
+  // 3. Fallback to local file /tmp or data/db.json
   try {
     let fileToRead = RUNTIME_DB_FILE;
     if (!fs.existsSync(fileToRead)) {
@@ -75,7 +109,29 @@ async function readDB() {
 }
 
 async function writeDB(data) {
-  // If Vercel KV / Upstash environment variables exist, write to Cloud DB!
+  // 1. If Supabase environment variables exist, write to Supabase Cloud!
+  if (SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({
+          id: 'capaian_db',
+          data: data
+        })
+      });
+      return true;
+    } catch (err) {
+      console.error('Error writing Supabase DB:', err);
+    }
+  }
+
+  // 2. If Vercel KV / Upstash environment variables exist, write to Cloud KV!
   if (KV_URL && KV_TOKEN) {
     try {
       await fetch(`${KV_URL}/set/capaian_db`, {
@@ -92,7 +148,7 @@ async function writeDB(data) {
     }
   }
 
-  // Fallback to local file /tmp or data/db.json
+  // 3. Fallback to local file /tmp or data/db.json
   try {
     fs.writeFileSync(RUNTIME_DB_FILE, JSON.stringify(data, null, 2));
     return true;
