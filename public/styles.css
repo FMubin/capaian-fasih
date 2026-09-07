@@ -740,3 +740,127 @@ body.bg-rekap-page {
   }
 }
 
+/* ==========================================================================
+   MAINTENANCE MODE OVERLAY (ECCENTRIC & CATCHY UI)
+   ========================================================================== */
+.maintenance-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: linear-gradient(135deg, #0f3866 0%, #0f4c81 50%, #0284c7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.maintenance-card {
+  background: #ffffff;
+  max-width: 520px;
+  width: 100%;
+  border-radius: 24px;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+  position: relative;
+  overflow: hidden;
+  border-top: 6px solid #f97316;
+}
+
+.maintenance-icon-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  font-size: 2.75rem;
+  color: #0f4c81;
+  margin-bottom: 1.25rem;
+}
+
+.icon-tool {
+  color: #f97316;
+}
+
+.badge-maintenance {
+  display: inline-block;
+  background: #fff7ed;
+  color: #ea580c;
+  border: 1px solid #ffedd5;
+  font-size: 0.8rem;
+  font-weight: 800;
+  padding: 0.35rem 0.85rem;
+  border-radius: 9999px;
+  margin-bottom: 1rem;
+  letter-spacing: 0.05em;
+}
+
+.maintenance-title {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin-bottom: 0.85rem;
+  line-height: 1.3;
+}
+
+.maintenance-quote {
+  font-size: 0.95rem;
+  color: #334155;
+  line-height: 1.6;
+  background: #f8fafc;
+  padding: 1.15rem;
+  border-radius: 14px;
+  border-left: 4px solid #0284c7;
+  margin-bottom: 1.5rem;
+  text-align: left;
+}
+
+.maintenance-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 9999px;
+  overflow: hidden;
+  margin-bottom: 1.25rem;
+}
+
+.progress-fill {
+  width: 65%;
+  height: 100%;
+  background: linear-gradient(90deg, #f97316, #0284c7);
+  border-radius: 9999px;
+  animation: pulseProgress 2s infinite ease-in-out;
+}
+
+@keyframes pulseProgress {
+  0% { width: 45%; }
+  50% { width: 85%; }
+  100% { width: 45%; }
+}
+
+.maintenance-subtext {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 1.5rem;
+  line-height: 1.5;
+}
+
+.btn-refresh-maint {
+  background: #0f4c81;
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 0.925rem;
+  border: none;
+  padding: 0.8rem 1.75rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(15, 76, 129, 0.25);
+
+  &:hover {
+    background: #0f3866;
+    transform: translateY(-2px);
+  }
+}
+
+

@@ -22,10 +22,13 @@
         <p style="font-size: 0.8rem; color: #94a3b8;">Portal Penerimaan, Penggabungan Gambar Per Petugas & Cetak Laporan</p>
       </div>
       
-      <!-- Link Kembali ke Portal Upload PPL/PML -->
-      <div class="header-nav-link">
+      <!-- Link Kembali & Maintenance Toggle -->
+      <div class="header-nav-link" style="display: flex; gap: 0.5rem; align-items: center;">
+        <button type="button" id="btnToggleMaintenance" class="nav-btn-link outline" style="border-color: #f97316; color: #ea580c; background: #fff7ed;">
+          <i class="fa-solid fa-screwdriver-wrench"></i> Maintenance: <strong id="maintStatusText">Checking...</strong>
+        </button>
         <a href="index.html" class="nav-btn-link outline">
-          &larr; <i class="fa-solid fa-cloud-arrow-up"></i> Form Upload PPL / PML
+          &larr; <i class="fa-solid fa-cloud-arrow-up"></i> Form Upload
         </a>
       </div>
     </div>

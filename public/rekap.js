@@ -21,10 +21,74 @@ document.addEventListener('DOMContentLoaded', () => {
   const lightboxTitle = document.getElementById('lightboxTitle');
   const lightboxTime = document.getElementById('lightboxTime');
   const btnDownloadImage = document.getElementById('btnDownloadImage');
-  const btnCloseLightbox = document.getElementById('btnCloseLightbox');
+  const btnToggleMaintenance = document.getElementById('btnToggleMaintenance');
+  const maintStatusText = document.getElementById('maintStatusText');
+  let isMaintenanceActive = false;
 
+  fetchMaintenanceStatus();
   fetchMasterData();
   fetchCapaianList();
+
+  async function fetchMaintenanceStatus() {
+    try {
+      const res = await fetch('/api/maintenance');
+      const json = await res.json();
+      if (json.success) {
+        isMaintenanceActive = Boolean(json.maintenance);
+        updateMaintenanceUI();
+      }
+    } catch (err) {
+      console.error('Failed to fetch maintenance status:', err);
+    }
+  }
+
+  function updateMaintenanceUI() {
+    if (!maintStatusText) return;
+    if (isMaintenanceActive) {
+      maintStatusText.textContent = 'AKTIF (ON)';
+      maintStatusText.style.color = '#ef4444';
+      if (btnToggleMaintenance) {
+        btnToggleMaintenance.style.borderColor = '#ef4444';
+        btnToggleMaintenance.style.background = '#fef2f2';
+        btnToggleMaintenance.style.color = '#ef4444';
+      }
+    } else {
+      maintStatusText.textContent = 'NONAKTIF (OFF)';
+      maintStatusText.style.color = '#10b981';
+      if (btnToggleMaintenance) {
+        btnToggleMaintenance.style.borderColor = '#10b981';
+        btnToggleMaintenance.style.background = '#f0fdf4';
+        btnToggleMaintenance.style.color = '#047857';
+      }
+    }
+  }
+
+  if (btnToggleMaintenance) {
+    btnToggleMaintenance.addEventListener('click', async () => {
+      const nextState = !isMaintenanceActive;
+      const confirmMsg = nextState 
+        ? 'Apakah Anda yakin ingin MENGAKTIFKAN Mode Pemeliharaan (Maintenance)? Petugas tidak akan bisa mengunggah screenshot.' 
+        : 'Apakah Anda yakin ingin MENONAKTIFKAN Mode Pemeliharaan (Maintenance)? Form upload petugas akan terbuka kembali.';
+      
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch('/api/maintenance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ enabled: nextState })
+        });
+        const json = await res.json();
+        if (json.success) {
+          isMaintenanceActive = json.maintenance;
+          updateMaintenanceUI();
+          showToast(json.message, 'success');
+        }
+      } catch (err) {
+        showToast('Gagal mengubah mode maintenance', 'danger');
+      }
+    });
+  }
 
   async function fetchMasterData() {
     try {

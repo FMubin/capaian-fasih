@@ -33,10 +33,24 @@ document.addEventListener('DOMContentLoaded', () => {
   const gridHapus = document.getElementById('gridHapus');
   const btnRemoveHapus = document.getElementById('btnRemoveHapus');
 
-  const uploadForm = document.getElementById('uploadForm');
-  const btnSubmitUpload = document.getElementById('btnSubmitUpload');
+  const maintenanceOverlay = document.getElementById('maintenanceOverlay');
 
+  checkMaintenanceMode();
   fetchMasterData();
+
+  async function checkMaintenanceMode() {
+    try {
+      const res = await fetch('/api/maintenance');
+      const json = await res.json();
+      if (json.success && json.maintenance) {
+        if (maintenanceOverlay) maintenanceOverlay.classList.remove('hidden');
+      } else {
+        if (maintenanceOverlay) maintenanceOverlay.classList.add('hidden');
+      }
+    } catch (err) {
+      console.error('Failed to check maintenance mode:', err);
+    }
+  }
 
   async function fetchMasterData() {
     try {

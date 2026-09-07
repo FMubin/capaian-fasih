@@ -181,6 +181,27 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 
+// 0. Maintenance Mode API
+app.get('/api/maintenance', async (req, res) => {
+  const db = await readDB();
+  res.json({
+    success: true,
+    maintenance: Boolean(db.maintenance)
+  });
+});
+
+app.post('/api/maintenance', async (req, res) => {
+  const { enabled } = req.body;
+  const db = await readDB();
+  db.maintenance = Boolean(enabled);
+  await writeDB(db);
+  res.json({
+    success: true,
+    maintenance: db.maintenance,
+    message: db.maintenance ? 'Mode Pemeliharaan (Maintenance) DIAKTIFKAN.' : 'Mode Pemeliharaan (Maintenance) DINONAKTIFKAN.'
+  });
+});
+
 // 1. Get Master Data
 app.get('/api/master-data', async (req, res) => {
   const db = await readDB();
