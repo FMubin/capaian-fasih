@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Portal Rekapitulasi & Cetak Capaian FASIH (Organik BPS)</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-rekap-page">
+
+  <!-- Header khusus Organik BPS -->
+  <header class="rekap-header">
+    <div class="rekap-container">
+      <div class="brand-title">
+        <h1>REKAPITULASI <span>ORGANIK BPS</span></h1>
+        <p style="font-size: 0.8rem; color: #94a3b8;">Portal Penerimaan, Penggabungan Gambar Per Petugas & Cetak Laporan</p>
+      </div>
+      
+      <!-- Link Kembali ke Portal Upload PPL/PML -->
+      <div class="header-nav-link">
+        <a href="index.html" class="nav-btn-link outline">
+          &larr; <i class="fa-solid fa-cloud-arrow-up"></i> Form Upload PPL / PML
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content - REKAPITULASI ORGANIK BPS -->
+  <main class="rekap-main">
+
+    <section class="rekap-card">
+      <div class="filter-toolbar">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <i class="fa-solid fa-print" style="font-size: 1.25rem; color: #0f4c81;"></i>
+          <div>
+            <h2 style="font-size: 1.1rem; font-weight: 700; color: #0f172a;">Rekapitulasi Screenshot Per Petugas</h2>
+            <p style="font-size: 0.8rem; color: #64748b;">Seluruh hasil screenshot dikelompokkan otomatis per nama petugas dari 1.272 data master.</p>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" id="btnPrintAll" class="btn-print" style="background: #10b981;">
+            <i class="fa-solid fa-print"></i> Cetak Seluruh Rekap Petugas
+          </button>
+        </div>
+      </div>
+
+      <!-- Filters Toolbar -->
+      <div style="padding: 0.85rem 1.5rem; background: #ffffff; border-bottom: 1px solid #e2e8f0; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: space-between;">
+        <div style="position: relative; flex: 1; min-width: 260px;">
+          <i class="fa-solid fa-magnifying-glass" style="position: absolute; left: 1rem; top: 50%; transform: translateY(-50%); color: #94a3b8;"></i>
+          <input type="text" id="filterSearch" class="custom-select" style="padding-left: 2.5rem; height: 38px; background: #f8fafc;" placeholder="Cari nama petugas atau kecamatan...">
+          <button type="button" id="btnClearSearch" class="hidden" style="position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%); background: none; border: none; cursor: pointer;">&times;</button>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <label for="filterKecamatan" style="font-size: 0.85rem; font-weight: 600; color: #475569;">Kecamatan:</label>
+          <select id="filterKecamatan" class="custom-select" style="height: 38px; padding: 0.4rem 2rem 0.4rem 0.8rem; width: auto;">
+            <option value="SEMUA">Semua Kecamatan</option>
+          </select>
+
+          <button type="button" id="btnRefreshList" class="btn-print" style="background: #0f4c81;" title="Refresh Data">
+            <i class="fa-solid fa-rotate-right"></i> Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Merged Cards Container (Grouped per Petugas) -->
+      <div id="mergedContainer" class="merged-container">
+        <!-- Grouped officer cards injected dynamically via JS -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-icon">
+          <i class="fa-solid fa-folder-open"></i>
+        </div>
+        <h3>Belum Ada Data Screenshot</h3>
+        <p>Belum ada screenshot yang diunggah oleh petugas lapangan.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Printable Container (Hidden on Screen, Visible on Print) -->
+  <div id="printContainer" class="print-container"></div>
+
+  <!-- Modal Lightbox / Fullscreen Preview Image -->
+  <div id="modalLightbox" class="modal-backdrop hidden">
+    <div class="lightbox-content">
+      <button type="button" class="btn-close-lightbox" id="btnCloseLightbox">&times;</button>
+      <div class="lightbox-body">
+        <img id="lightboxImage" src="" alt="Screenshot Full View">
+        <div class="lightbox-caption">
+          <div class="caption-details">
+            <h4 id="lightboxTitle">Nama Petugas - Kecamatan</h4>
+            <small id="lightboxTime">Waktu upload...</small>
+          </div>
+          <a id="btnDownloadImage" href="#" download class="btn-print" style="background: #2563eb; text-decoration: none;">
+            <i class="fa-solid fa-download"></i> Unduh Gambar
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- Footer -->
+  <footer class="app-footer">
+    <p>&copy; 2026 Badan Pusat Statistik - Portal Rekapitulasi & Cetak Organik BPS</p>
+  </footer>
+
+  <script src="rekap.js"></script>
+</body>
+</html>

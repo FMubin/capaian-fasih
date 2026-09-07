@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upload Screenshot Capaian & Hapus Fasih</title>
+  <!-- Google Fonts: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-upload-page">
+
+  <!-- Main Centered Container matching user's exact UI design mockup -->
+  <div class="upload-wrapper">
+    
+    <div class="upload-card">
+      
+      <div class="upload-card-header">
+        <h1 class="upload-title">Upload Screenshot Capaian & Hapus Fasih</h1>
+        <p class="upload-subtitle">Unggah bukti pencapaian dan bukti hapus aplikasi Fasih Anda</p>
+      </div>
+
+      <form id="uploadForm" class="form-body" enctype="multipart/form-data">
+        
+        <!-- Field 1: Kecamatan Tugas -->
+        <div class="form-group">
+          <label for="selectKecamatan" class="input-label">Kecamatan Tugas <span class="required">*</span></label>
+          <select id="selectKecamatan" name="kecamatan" class="custom-select" required>
+            <option value="" disabled selected>Semua Kecamatan / Pilih Kecamatan...</option>
+          </select>
+        </div>
+
+        <!-- Field 2: Nama Petugas -->
+        <div class="form-group">
+          <div class="label-row">
+            <label for="selectPetugas" class="input-label">Nama Petugas <span class="required">*</span></label>
+            <span id="posisiBadge" class="posisi-badge hidden">Posisi: -</span>
+          </div>
+          <select id="selectPetugas" name="nama" class="custom-select" required disabled>
+            <option value="" disabled selected>Cari Nama Petugas...</option>
+          </select>
+          <input type="hidden" id="inputPosisi" name="posisi" value="PPL Sensus">
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- UPLOAD BOX 1 (ATAS): SCREENSHOT CAPAIAN PETUGAS (HALAMAN 1 PRINT) -->
+        <!-- ============================================================== -->
+        <div class="form-group">
+          <label class="input-label label-capaian">
+            <i class="fa-solid fa-circle-check text-green"></i> 1. Screenshot Capaian Petugas <small class="text-sub-label">(Untuk Halaman 1 Cetak)</small>
+          </label>
+          
+          <div class="dropzone-box dropzone-capaian" id="dropzoneCapaian">
+            <input type="file" id="inputFileCapaian" name="files_capaian" accept="image/*" class="file-input" multiple>
+            
+            <div class="dropzone-prompt" id="promptCapaian">
+              <div class="cloud-icon icon-green">
+                <i class="fa-solid fa-upload"></i>
+              </div>
+              <p class="prompt-main">Klik atau seret screenshot CAPAIAN ke sini</p>
+              <p class="prompt-sub">Format PNG, JPG, WEBP &bull; <strong>Maks. 500 KB</strong> &bull; <strong>Orientasi Portrait</strong></p>
+            </div>
+
+            <!-- Preview Grid Capaian -->
+            <div class="multi-preview-container hidden" id="containerCapaian">
+              <div class="preview-header-bar">
+                <span class="count-badge bg-green" id="badgeCapaian">0 File Capaian</span>
+                <button type="button" id="btnRemoveCapaian" class="btn-clear-files">
+                  <i class="fa-solid fa-trash-can"></i> Hapus Semua
+                </button>
+              </div>
+              <div class="preview-grid" id="gridCapaian"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- UPLOAD BOX 2 (BAWAH): SCREENSHOT HAPUS APLIKASI FASIH (HALAMAN 2 PRINT) -->
+        <!-- ============================================================== -->
+        <div class="form-group">
+          <label class="input-label label-hapus">
+            <i class="fa-solid fa-circle-xmark text-red"></i> 2. Screenshot Hapus Aplikasi Fasih / Periode Sensus <small class="text-sub-label">(Untuk Halaman 2 Cetak)</small>
+          </label>
+          
+          <div class="dropzone-box dropzone-hapus" id="dropzoneHapus">
+            <input type="file" id="inputFileHapus" name="files_hapus" accept="image/*" class="file-input" multiple>
+            
+            <div class="dropzone-prompt" id="promptHapus">
+              <div class="cloud-icon icon-red">
+                <i class="fa-solid fa-upload"></i>
+              </div>
+              <p class="prompt-main">Klik atau seret screenshot HAPUS ke sini</p>
+              <p class="prompt-sub">Format PNG, JPG, WEBP &bull; <strong>Maks. 500 KB</strong> &bull; <strong>Orientasi Portrait</strong></p>
+            </div>
+
+            <!-- Preview Grid Hapus -->
+            <div class="multi-preview-container hidden" id="containerHapus">
+              <div class="preview-header-bar">
+                <span class="count-badge bg-red" id="badgeHapus">0 File Hapus</span>
+                <button type="button" id="btnRemoveHapus" class="btn-clear-files">
+                  <i class="fa-solid fa-trash-can"></i> Hapus Semua
+                </button>
+              </div>
+              <div class="preview-grid" id="gridHapus"></div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Submit Button -->
+        <button type="submit" id="btnSubmitUpload" class="btn-orange-submit">
+          Kirim Bukti Screenshot
+        </button>
+
+      </form>
+
+    </div>
+
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <script src="upload.js"></script>
+</body>
+</html>
