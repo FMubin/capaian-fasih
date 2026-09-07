@@ -132,11 +132,37 @@ document.addEventListener('DOMContentLoaded', () => {
       posisiBadge.textContent = `Posisi: ${pos}`;
       posisiBadge.classList.remove('hidden');
 
+      const currentKec = (selectKecamatan.value === 'SEMUA' && selectedOption.dataset.kecamatan) 
+        ? selectedOption.dataset.kecamatan 
+        : selectKecamatan.value;
+
       if (selectKecamatan.value === 'SEMUA' && selectedOption.dataset.kecamatan) {
         selectKecamatan.value = selectedOption.dataset.kecamatan;
       }
+
+      checkOfficerUploadStatus(currentKec, val);
     }
   });
+
+  async function checkOfficerUploadStatus(kec, name) {
+    if (!kec || !name) return;
+    try {
+      const res = await fetch(`/api/check-status?kecamatan=${encodeURIComponent(kec)}&nama=${encodeURIComponent(name)}`);
+      const json = await res.json();
+      if (json.success && json.uploaded) {
+        showToast(`PERINGATAN: Petugas "${name}" (${kec}) SUDAH PERNAH MENGUNGGAH SCREENSHOT! Setiap petugas hanya diperbolehkan upload 1 kali.`, 'danger');
+        btnSubmitUpload.disabled = true;
+        btnSubmitUpload.style.background = '#94a3b8';
+        btnSubmitUpload.textContent = '⛔ Petugas Ini Sudah Upload (Maks 1x Submission)';
+      } else {
+        btnSubmitUpload.disabled = false;
+        btnSubmitUpload.style.background = '';
+        btnSubmitUpload.textContent = 'Kirim Bukti Screenshot';
+      }
+    } catch (err) {
+      console.error('Failed to check status:', err);
+    }
+  }
 
   async function saveNewPetugas(kec, pos, name) {
     try {

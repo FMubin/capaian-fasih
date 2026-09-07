@@ -149,6 +149,26 @@ app.get('/api/capaian', (req, res) => {
   });
 });
 
+// 3.5 Check Upload Status for Specific Officer
+app.get('/api/check-status', (req, res) => {
+  const { kecamatan, nama } = req.query;
+  if (!kecamatan || !nama) {
+    return res.json({ success: true, uploaded: false });
+  }
+
+  const db = readDB();
+  const exists = db.capaian.some(
+    item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
+            item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
+  );
+
+  res.json({
+    success: true,
+    uploaded: exists,
+    count: exists ? db.capaian.filter(item => item.nama.toLowerCase() === nama.trim().toLowerCase() && item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()).length : 0
+  });
+});
+
 // 4. Dual Dropzone Upload (Accepts files_capaian and files_hapus simultaneously!)
 app.post('/api/capaian', upload.fields([
   { name: 'files_capaian', maxCount: 20 },
@@ -169,14 +189,23 @@ app.post('/api/capaian', upload.fields([
     const { kecamatan, nama, posisi } = req.body;
 
     if (!kecamatan || !nama) {
-      // Cleanup files if validation fails
-      Object.values(req.files || {}).flat().forEach(f => {
-        if (fs.existsSync(f.path)) fs.unlinkSync(f.path);
-      });
       return res.status(400).json({ success: false, message: 'Kecamatan dan Nama Petugas wajib dipilih!' });
     }
 
     const db = readDB();
+
+    // STRICT CONSTRAINT: Reject if officer has ALREADY uploaded
+    const alreadyUploaded = db.capaian.some(
+      item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
+              item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
+    );
+
+    if (alreadyUploaded) {
+      return res.status(400).json({
+        success: false,
+        message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
+      });
+    }
 
     // Auto register to master data if missing
     const exists = db.petugas_master.some(p => p.nama.toLowerCase() === nama.trim().toLowerCase());
