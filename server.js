@@ -358,7 +358,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 
-// 0. Diagnostic Route to Test Google Drive Connection directly in browser!
+// 0. Diagnostic Route to Test Google Drive Connection & Upload directly in browser!
 app.get('/api/test-drive', async (req, res) => {
   const hasEmail = Boolean(GOOGLE_CLIENT_EMAIL);
   const hasKey = Boolean(GOOGLE_PRIVATE_KEY);
@@ -389,9 +389,26 @@ app.get('/api/test-drive', async (req, res) => {
     });
   }
 
+  // Attempt test file upload into the specified folder!
+  const testBuffer = Buffer.from('TEST UPLOAD CAPAIAN FASIH BPS DRIVE INTEGRATION ' + new Date().toISOString());
+  const driveResult = await uploadToGoogleDrive(testBuffer, `[TEST] Connection_Test_${Date.now()}.txt`, 'text/plain');
+
+  if (!driveResult || !driveResult.fileId) {
+    return res.json({
+      success: false,
+      message: 'Auth sukses, TETAPI gagal membuat file di folder Google Drive! Pastikan folder sudah di-share ke email Service Account dengan akses Editor.',
+      config: {
+        email: cleanString(GOOGLE_CLIENT_EMAIL),
+        folderId: cleanString(GOOGLE_FOLDER_ID)
+      }
+    });
+  }
+
   res.json({
     success: true,
-    message: 'Google Drive API Connection SUCCESSFUL!',
+    message: 'Google Drive API Connection & Test Upload SUCCESSFUL!',
+    uploadedFileId: driveResult.fileId,
+    viewUrl: driveResult.viewUrl,
     config: {
       email: cleanString(GOOGLE_CLIENT_EMAIL),
       folderId: cleanString(GOOGLE_FOLDER_ID)
