@@ -480,7 +480,17 @@ body.bg-rekap-page {
 }
 
 /* PRINT LAYOUT */
-.print-container { display: none; }
+.print-container {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 210mm;
+  height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
 
 @media print {
   @page {
@@ -502,8 +512,14 @@ body.bg-rekap-page {
 
   .print-container {
     display: block !important;
-    position: relative !important;
+    position: static !important;
+    left: auto !important;
+    top: auto !important;
     width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     margin: 0 !important;
     padding: 0 !important;
     background: #ffffff !important;
