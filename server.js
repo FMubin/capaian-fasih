@@ -614,10 +614,10 @@ app.get('/api/officer-images', async (req, res) => {
         let rows = await response.json();
         rows = rows.map(item => {
           let finalUrl = item.file_url || '';
-          if (item.drive_file_id) {
-            finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
-          } else if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
+          if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
             finalUrl = `data:image/webp;base64,${finalUrl}`;
+          } else if (!finalUrl && item.drive_file_id) {
+            finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
           }
           return {
             id: item.id,
@@ -642,10 +642,10 @@ app.get('/api/officer-images', async (req, res) => {
   }
   const result = list.map(item => {
     let finalUrl = item.file_url || '';
-    if (item.drive_file_id) {
-      finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
-    } else if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
+    if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
       finalUrl = `data:image/webp;base64,${finalUrl}`;
+    } else if (!finalUrl && item.drive_file_id) {
+      finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
     }
     return { id: item.id, file_url: finalUrl };
   });
@@ -854,28 +854,14 @@ app.post('/api/capaian', upload.fields([
 
     const createdItems = [];
 
-    // Helper to process and upload files (prefers Google Drive API, falls back to Base64)
+    // Helper to process and upload files directly into Supabase as compressed Base64 (or ImgBB if configured)
     const processFiles = async (fileList, jenisTag) => {
       for (let index = 0; index < fileList.length; index++) {
         const file = fileList[index];
         let fileUrl = '';
-        let driveFileId = null;
 
-        // 1. Try Google Drive Upload if API configured
-        if (file.buffer) {
-          const driveResult = await uploadToGoogleDrive(
-            file.buffer,
-            `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`,
-            file.mimetype || 'image/webp'
-          );
-          if (driveResult && driveResult.fileUrl) {
-            fileUrl = driveResult.fileUrl;
-            driveFileId = driveResult.fileId;
-          }
-        }
-
-        // 2. Try ImgBB Free CDN upload if IMGBB_API_KEY is configured
-        if (!fileUrl && file.buffer && IMGBB_API_KEY) {
+        // 1. Try ImgBB Free CDN upload if IMGBB_API_KEY is configured
+        if (file.buffer && IMGBB_API_KEY) {
           const imgbbResult = await uploadToImgBB(
             file.buffer,
             `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`
@@ -885,10 +871,10 @@ app.post('/api/capaian', upload.fields([
           }
         }
 
-        // 3. Fallback to Base64 Data URI if Google Drive & ImgBB are not configured or failed
-        if (!fileUrl) {
-          const base64Data = file.buffer ? file.buffer.toString('base64') : '';
-          fileUrl = base64Data ? `data:${file.mimetype};base64,${base64Data}` : '';
+        // 2. Default to compressed Base64 Data URI directly stored in Supabase DB
+        if (!fileUrl && file.buffer) {
+          const base64Data = file.buffer.toString('base64');
+          fileUrl = `data:${file.mimetype || 'image/webp'};base64,${base64Data}`;
         }
 
         const newItem = {
