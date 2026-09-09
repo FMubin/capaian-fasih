@@ -223,11 +223,8 @@ document.addEventListener('DOMContentLoaded', () => {
               <button type="button" class="btn-toggle-gallery" id="btnToggle-${cardId}" onclick="toggleOfficerGallery('${cardId}', ${group.screenshots.length})">
                 <i class="fa-solid fa-eye"></i> Tampilkan ${group.screenshots.length} Screenshot
               </button>
-              <button type="button" class="btn-print" style="background: #0284c7;" onclick="downloadOfficerZip('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
-                <i class="fa-solid fa-download"></i> Unduh
-              </button>
-              <button type="button" class="btn-print" onclick="printSingleOfficerReport('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
-                <i class="fa-solid fa-print"></i> Cetak Lembar
+              <button type="button" class="btn-print" style="background: #0284c7;" onclick="printSingleOfficerReport('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
+                <i class="fa-solid fa-file-pdf"></i> Unduh PDF
               </button>
               <button type="button" class="btn-print" style="background: #ef4444;" onclick="deleteAllOfficerScreenshots('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
                 <i class="fa-solid fa-trash-can"></i> Hapus Semua
@@ -353,105 +350,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const btnDownloadFiltered = document.getElementById('btnDownloadFiltered');
   if (btnDownloadFiltered) {
-    btnDownloadFiltered.addEventListener('click', downloadFilteredZip);
+    btnDownloadFiltered.addEventListener('click', () => {
+      if (currentItems.length === 0) {
+        showToast('Tidak ada data screenshot untuk diunduh', 'danger');
+        return;
+      }
+      buildAndTriggerPrint(currentItems);
+    });
   }
 
-  // ZIP DOWNLOAD SYSTEM (1 PETUGAS & MASSAL SESUAI FILTER)
-  window.downloadOfficerZip = async function(kecamatan, nama) {
-    const officerItems = currentItems.filter(i => i.kecamatan.toLowerCase() === kecamatan.toLowerCase() && i.nama.toLowerCase() === nama.toLowerCase());
-    if (officerItems.length === 0) {
-      showToast(`Tidak ada foto untuk ${nama}`, 'danger');
-      return;
-    }
-
-    if (typeof JSZip === 'undefined') {
-      showToast('Modul ZIP belum siap, silakan muat ulang halaman', 'danger');
-      return;
-    }
-
-    showToast(`Mengemas foto ${nama}...`, 'info');
-
-    try {
-      const zip = new JSZip();
-      const folderName = `${kecamatan}_${nama}`.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const folder = zip.folder(folderName);
-
-      for (let idx = 0; idx < officerItems.length; idx++) {
-        const item = officerItems[idx];
-        try {
-          const resp = await fetch(item.file_url);
-          const blob = await resp.blob();
-          const jenisClean = (item.jenis || 'Capaian').replace(/[^a-zA-Z0-9]/g, '_');
-          folder.file(`${idx + 1}_${jenisClean}_${item.id}.webp`, blob);
-        } catch (err) {
-          console.error('Failed to fetch image for officer zip:', err);
-        }
-      }
-
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `${folderName}_Bukti_FASIH.zip`);
-      showToast(`Berhasil mengunduh ZIP foto ${nama}`, 'success');
-    } catch (err) {
-      console.error('Error creating officer ZIP:', err);
-      showToast('Gagal membuat file ZIP', 'danger');
-    }
-  };
-
-  async function downloadFilteredZip() {
-    if (currentItems.length === 0) {
-      showToast('Tidak ada data screenshot untuk diunduh', 'danger');
-      return;
-    }
-
-    if (typeof JSZip === 'undefined') {
-      showToast('Modul ZIP belum siap, silakan muat ulang halaman', 'danger');
-      return;
-    }
-
-    const kec = filterKecamatan.value || 'SEMUA';
-    const q = filterSearch.value.trim();
-    const filterTag = kec !== 'SEMUA' ? kec : (q ? `Search_${q}` : 'SEMUA_KECAMATAN');
-    const zipFilename = `Rekap_FASIH_${filterTag.replace(/[^a-zA-Z0-9_-]/g, '_')}_${Date.now()}.zip`;
-
-    if (!confirm(`Apakah Anda yakin ingin mengunduh ZIP massal berisi ${currentItems.length} foto screenshot (${groupedOfficers.length} Petugas)?`)) return;
-
-    showToast(`Memulai pengemasan ZIP massal (${currentItems.length} foto)...`, 'info');
-
-    try {
-      const zip = new JSZip();
-      let completed = 0;
-
-      for (let idx = 0; idx < currentItems.length; idx++) {
-        const item = currentItems[idx];
-        const kecClean = (item.kecamatan || 'Kecamatan').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const namaClean = (item.nama || 'Petugas').replace(/[^a-zA-Z0-9_-]/g, '_');
-        const jenisClean = (item.jenis || 'Capaian').replace(/[^a-zA-Z0-9]/g, '_');
-
-        try {
-          const resp = await fetch(item.file_url);
-          const blob = await resp.blob();
-          zip.file(`${kecClean}/${namaClean}/${idx + 1}_${jenisClean}_${item.id}.webp`, blob);
-        } catch (err) {
-          console.error('Failed to fetch image for bulk zip:', err);
-        }
-
-        completed++;
-        if (completed % 5 === 0 || completed === currentItems.length) {
-          showToast(`Mengemas foto ${completed}/${currentItems.length}...`, 'info');
-        }
-      }
-
-      showToast('Membuat file .ZIP...', 'info');
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, zipFilename);
-      showToast(`Berhasil mengunduh ZIP massal (${currentItems.length} foto)!`, 'success');
-    } catch (err) {
-      console.error('Error creating bulk ZIP:', err);
-      showToast('Gagal membuat file ZIP massal', 'danger');
-    }
-  }
-
-  // EXACT 2-PAGE PRINT REPORT SYSTEM (HALAMAN 1: CAPAIAN, HALAMAN 2: HAPUS)
+  // EXACT 2-PAGE PRINT / PDF REPORT SYSTEM (HALAMAN 1: CAPAIAN, HALAMAN 2: HAPUS)
   btnPrintAll.addEventListener('click', () => {
     if (currentItems.length === 0) {
       showToast('Tidak ada data screenshot untuk dicetak', 'danger');
@@ -466,9 +374,41 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAndTriggerPrint(officerItems);
   };
 
+  // Pre-convert proxy/http image URLs into inline Data URIs before printing to guarantee 100% instant picture rendering in PDF preview
+  async function getBase64DataURI(url) {
+    if (!url) return '';
+    if (url.startsWith('data:')) return url;
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = () => resolve(url);
+        reader.readAsDataURL(blob);
+      });
+    } catch (err) {
+      console.error('Base64 pre-conversion failed:', err);
+      return url;
+    }
+  }
+
   async function buildAndTriggerPrint(itemsToPrint) {
+    if (itemsToPrint.length === 0) return;
+
+    showToast('Menyiapkan gambar & dokumen PDF...', 'info');
+
+    // Pre-convert all image URLs to inline Base64 Data URIs so Chrome/Edge print preview renders them INSTANTLY with 0ms network delay!
+    const preparedItems = await Promise.all(itemsToPrint.map(async item => {
+      const inlineDataUri = await getBase64DataURI(item.file_url);
+      return {
+        ...item,
+        file_url: inlineDataUri
+      };
+    }));
+
     const grouped = {};
-    itemsToPrint.forEach(item => {
+    preparedItems.forEach(item => {
       const key = `${item.kecamatan}__${item.nama}`;
       if (!grouped[key]) {
         grouped[key] = {
