@@ -25,6 +25,8 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
+const ENABLE_SUPABASE = process.env.ENABLE_SUPABASE === 'true'; // Default FALSE to prevent Supabase Egress quota overage (0 Bytes traffic)
+
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
                      process.env.SUPABASE_KEY || 
@@ -227,7 +229,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
 
 // Helper to check if multi-row table `capaian_records` exists in Supabase
 async function isMultiRowTableAvailable() {
-  if (!SUPABASE_URL || !SUPABASE_KEY) return false;
+  if (!ENABLE_SUPABASE || !SUPABASE_URL || !SUPABASE_KEY) return false;
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?select=id&limit=1`, {
       headers: {
@@ -243,7 +245,7 @@ async function isMultiRowTableAvailable() {
 
 // Single-row fallback DB reader/writer for legacy app_data / KV / file
 async function readDB() {
-  if (SUPABASE_URL && SUPABASE_KEY) {
+  if (ENABLE_SUPABASE && SUPABASE_URL && SUPABASE_KEY) {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?id=eq.capaian_db&select=data`, {
         headers: {
@@ -317,7 +319,7 @@ async function readDB() {
 }
 
 async function writeDB(data) {
-  if (SUPABASE_URL && SUPABASE_KEY) {
+  if (ENABLE_SUPABASE && SUPABASE_URL && SUPABASE_KEY) {
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
         method: 'POST',
