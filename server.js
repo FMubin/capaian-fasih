@@ -3,8 +3,7 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const stream = require('stream');
-const { google } = require('googleapis');
+const crypto = require('crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,69 +37,126 @@ const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || process.env
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_DRIVE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
 const GOOGLE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_FOLDER_ID;
 
-function getGoogleDriveClient() {
-  if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
-    console.log('[GOOGLE DRIVE] Credentials missing in environment variables');
-    return null;
-  }
+// Zero-dependency Google Service Account JWT OAuth Token Generator
+async function getGoogleAccessToken(clientEmail, privateKey) {
+  if (!clientEmail || !privateKey) return null;
   try {
-    const formattedPrivateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
-    const auth = new google.auth.JWT(
-      GOOGLE_CLIENT_EMAIL.trim(),
-      null,
-      formattedPrivateKey,
-      ['https://www.googleapis.com/auth/drive']
-    );
-    return google.drive({ version: 'v3', auth });
+    const header = { alg: 'RS256', typ: 'JWT' };
+    const now = Math.floor(Date.now() / 1000);
+    const claimSet = {
+      iss: clientEmail.trim(),
+      scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
+      aud: 'https://oauth2.googleapis.com/token',
+      exp: now + 3600,
+      iat: now
+    };
+
+    const base64UrlEncode = (obj) =>
+      Buffer.from(typeof obj === 'string' ? obj : JSON.stringify(obj)).toString('base64url');
+
+    const encodedHeader = base64UrlEncode(header);
+    const encodedClaimSet = base64UrlEncode(claimSet);
+    const signatureInput = `${encodedHeader}.${encodedClaimSet}`;
+
+    const formattedKey = privateKey.replace(/\\n/g, '\n').trim();
+    const signer = crypto.createSign('RSA-SHA256');
+    signer.update(signatureInput);
+    const signature = signer.sign(formattedKey, 'base64url');
+
+    const jwt = `${signatureInput}.${signature}`;
+
+    const res = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion: jwt
+      })
+    });
+
+    const json = await res.json();
+    if (json.access_token) {
+      return json.access_token;
+    }
+    console.error('[GOOGLE AUTH ERROR]:', json);
+    return null;
   } catch (err) {
-    console.error('[GOOGLE DRIVE INIT ERROR]:', err && err.message ? err.message : err);
+    console.error('[GOOGLE AUTH EXCEPTION]:', err && err.message ? err.message : err);
     return null;
   }
 }
 
+// Zero-dependency Google Drive API Multipart Direct Uploader
 async function uploadToGoogleDrive(buffer, filename, mimetype) {
-  const drive = getGoogleDriveClient();
-  if (!drive) return null;
+  if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+    console.log('[GOOGLE DRIVE] Credentials missing in environment variables');
+    return null;
+  }
 
   try {
-    const bufferStream = new stream.PassThrough();
-    bufferStream.end(buffer);
+    const accessToken = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
+    if (!accessToken) return null;
 
-    const fileMetadata = {
+    const metadata = {
       name: filename,
       parents: GOOGLE_FOLDER_ID ? [GOOGLE_FOLDER_ID.trim()] : []
     };
 
-    const media = {
-      mimeType: mimetype,
-      body: bufferStream
-    };
+    const boundary = '-------314159265358979323846';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelimiter = `\r\n--${boundary}--`;
 
-    const response = await drive.files.create({
-      requestBody: fileMetadata,
-      media: media,
-      fields: 'id, webViewLink, webContentLink, thumbnailLink'
+    const body = Buffer.concat([
+      Buffer.from(
+        delimiter +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) +
+        delimiter +
+        `Content-Type: ${mimetype || 'image/webp'}\r\n\r\n`
+      ),
+      buffer,
+      Buffer.from(closeDelimiter)
+    ]);
+
+    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': `multipart/related; boundary=${boundary}`,
+        'Content-Length': body.length.toString()
+      },
+      body: body
     });
 
-    const fileId = response.data.id;
+    const uploadJson = await uploadRes.json();
+    if (!uploadJson.id) {
+      console.error('[GOOGLE DRIVE UPLOAD ERROR]:', uploadJson);
+      return null;
+    }
+
+    const fileId = uploadJson.id;
 
     // Grant public read permission to file
     try {
-      await drive.permissions.create({
-        fileId: fileId,
-        requestBody: {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
           role: 'reader',
           type: 'anyone'
-        }
+        })
       });
     } catch (permErr) {
-      console.warn('[GOOGLE DRIVE PERMISSION WARN]:', permErr && permErr.message ? permErr.message : permErr);
+      console.warn('[GOOGLE DRIVE PERMISSION WARN]:', permErr);
     }
 
     const fileUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
-    const viewUrl = response.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+    const viewUrl = uploadJson.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
 
-    console.log(`[GOOGLE DRIVE SUCCESS] Uploaded file: ${filename} (ID: ${fileId})`);
+    console.log(`[GOOGLE DRIVE SUCCESS] Uploaded ${filename} -> File ID: ${fileId}`);
 
     return {
       fileId,
@@ -108,7 +164,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
       viewUrl
     };
   } catch (err) {
-    console.error('[GOOGLE DRIVE UPLOAD ERROR]:', err && err.message ? err.message : err);
+    console.error('[GOOGLE DRIVE UPLOAD EXCEPTION]:', err && err.message ? err.message : err);
     return null;
   }
 }
@@ -446,7 +502,7 @@ app.get('/api/check-status', async (req, res) => {
   });
 });
 
-// 4. Dual Dropzone Upload (Supports Google Drive API + Supabase Storage)
+// 4. Dual Dropzone Upload (Supports zero-dependency Google Drive API + Supabase Storage)
 app.post('/api/capaian', upload.fields([
   { name: 'files_capaian', maxCount: 20 },
   { name: 'files_hapus', maxCount: 20 },
