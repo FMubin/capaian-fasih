@@ -5,6 +5,9 @@
 document.addEventListener('DOMContentLoaded', () => {
   let kecamatanList = [];
   let currentItems = [];
+  let groupedOfficers = [];
+  let currentPage = 1;
+  const ITEMS_PER_PAGE = 10;
 
   const filterKecamatan = document.getElementById('filterKecamatan');
   const filterSearch = document.getElementById('filterSearch');
@@ -15,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
   const mergedContainer = document.getElementById('mergedContainer');
   const emptyState = document.getElementById('emptyState');
   const printContainer = document.getElementById('printContainer');
+
+  const paginationBar = document.getElementById('paginationBar');
+  const paginationInfo = document.getElementById('paginationInfo');
+  const btnPrevPage = document.getElementById('btnPrevPage');
+  const btnNextPage = document.getElementById('btnNextPage');
+  const pageNumbers = document.getElementById('pageNumbers');
 
   const modalLightbox = document.getElementById('modalLightbox');
   const lightboxImage = document.getElementById('lightboxImage');
@@ -127,7 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (json.success) {
         currentItems = json.data;
-        renderMergedOfficersView(currentItems);
+        groupOfficersAndRender(currentItems);
       }
     } catch (err) {
       console.error('Failed to fetch list:', err);
@@ -135,10 +144,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function renderMergedOfficersView(items) {
+  function groupOfficersAndRender(items) {
     if (items.length === 0) {
+      groupedOfficers = [];
       mergedContainer.innerHTML = '';
       emptyState.classList.remove('hidden');
+      if (paginationBar) paginationBar.classList.add('hidden');
       return;
     }
 
@@ -149,6 +160,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const key = `${item.kecamatan}__${item.nama}`;
       if (!grouped[key]) {
         grouped[key] = {
+          id: key.replace(/[^a-zA-Z0-9]/g, '_'),
           kecamatan: item.kecamatan,
           nama: item.nama,
           posisi: item.posisi || 'PPL Sensus',
@@ -158,8 +170,29 @@ document.addEventListener('DOMContentLoaded', () => {
       grouped[key].screenshots.push(item);
     });
 
-    mergedContainer.innerHTML = Object.values(grouped).map(group => {
+    groupedOfficers = Object.values(grouped);
+    currentPage = 1;
+    renderCurrentPage();
+  }
+
+  function renderCurrentPage() {
+    if (groupedOfficers.length === 0) {
+      mergedContainer.innerHTML = '';
+      emptyState.classList.remove('hidden');
+      if (paginationBar) paginationBar.classList.add('hidden');
+      return;
+    }
+
+    const totalPages = Math.ceil(groupedOfficers.length / ITEMS_PER_PAGE) || 1;
+    currentPage = Math.max(1, Math.min(currentPage, totalPages));
+
+    const startIdx = (currentPage - 1) * ITEMS_PER_PAGE;
+    const endIdx = startIdx + ITEMS_PER_PAGE;
+    const pageItems = groupedOfficers.slice(startIdx, endIdx);
+
+    mergedContainer.innerHTML = pageItems.map(group => {
       const initial = group.nama.charAt(0).toUpperCase();
+      const cardId = group.id;
 
       return `
         <div class="officer-card">
@@ -172,9 +205,12 @@ document.addEventListener('DOMContentLoaded', () => {
               </div>
             </div>
 
-            <div style="display: flex; gap: 0.5rem;">
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+              <button type="button" class="btn-toggle-gallery" id="btnToggle-${cardId}" onclick="toggleOfficerGallery('${cardId}', ${group.screenshots.length})">
+                <i class="fa-solid fa-eye"></i> Tampilkan ${group.screenshots.length} Screenshot
+              </button>
               <button type="button" class="btn-print" onclick="printSingleOfficerReport('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
-                <i class="fa-solid fa-print"></i> Cetak Lembar (Hal 1: Capaian & Hal 2: Hapus)
+                <i class="fa-solid fa-print"></i> Cetak Lembar
               </button>
               <button type="button" class="btn-print" style="background: #ef4444;" onclick="deleteAllOfficerScreenshots('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
                 <i class="fa-solid fa-trash-can"></i> Hapus Semua
@@ -182,7 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
           </div>
 
-          <div class="officer-gallery-grid">
+          <div id="gallery-${cardId}" class="officer-gallery-grid hidden">
             ${group.screenshots.map(s => {
               const isHapus = (s.jenis || '').includes('Hapus');
               const tagClass = isHapus ? 'hapus' : 'capaian';
@@ -203,7 +239,81 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
       `;
     }).join('');
+
+    renderPaginationControls(startIdx, endIdx, totalPages);
   }
+
+  function renderPaginationControls(startIdx, endIdx, totalPages) {
+    if (!paginationBar) return;
+
+    if (groupedOfficers.length === 0) {
+      paginationBar.classList.add('hidden');
+      return;
+    }
+
+    paginationBar.classList.remove('hidden');
+
+    const displayedEnd = Math.min(endIdx, groupedOfficers.length);
+    paginationInfo.textContent = `Menampilkan ${startIdx + 1}-${displayedEnd} dari ${groupedOfficers.length} Petugas`;
+
+    btnPrevPage.disabled = (currentPage <= 1);
+    btnNextPage.disabled = (currentPage >= totalPages);
+
+    pageNumbers.innerHTML = '';
+    for (let i = 1; i <= totalPages; i++) {
+      const pageBtn = document.createElement('button');
+      pageBtn.type = 'button';
+      pageBtn.className = `page-btn ${i === currentPage ? 'active' : ''}`;
+      pageBtn.textContent = i;
+      pageBtn.onclick = () => {
+        currentPage = i;
+        renderCurrentPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      };
+      pageNumbers.appendChild(pageBtn);
+    }
+  }
+
+  if (btnPrevPage) {
+    btnPrevPage.addEventListener('click', () => {
+      if (currentPage > 1) {
+        currentPage--;
+        renderCurrentPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+  }
+
+  if (btnNextPage) {
+    btnNextPage.addEventListener('click', () => {
+      const totalPages = Math.ceil(groupedOfficers.length / ITEMS_PER_PAGE) || 1;
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderCurrentPage();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    });
+  }
+
+  window.toggleOfficerGallery = function(cardId, count) {
+    const galleryEl = document.getElementById(`gallery-${cardId}`);
+    const toggleBtn = document.getElementById(`btnToggle-${cardId}`);
+    if (!galleryEl || !toggleBtn) return;
+
+    if (galleryEl.classList.contains('hidden')) {
+      galleryEl.classList.remove('hidden');
+      toggleBtn.innerHTML = `<i class="fa-solid fa-eye-slash"></i> Sembunyikan ${count} Screenshot`;
+      toggleBtn.style.background = '#f1f5f9';
+      toggleBtn.style.color = '#475569';
+      toggleBtn.style.borderColor = '#cbd5e1';
+    } else {
+      galleryEl.classList.add('hidden');
+      toggleBtn.innerHTML = `<i class="fa-solid fa-eye"></i> Tampilkan ${count} Screenshot`;
+      toggleBtn.style.background = '#eff6ff';
+      toggleBtn.style.color = '#0284c7';
+      toggleBtn.style.borderColor = '#bfdbfe';
+    }
+  };
 
   // Filter Events
   filterKecamatan.addEventListener('change', fetchCapaianList);

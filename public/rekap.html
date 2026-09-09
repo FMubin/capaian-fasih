@@ -79,6 +79,16 @@
         <!-- Grouped officer cards injected dynamically via JS -->
       </div>
 
+      <!-- Pagination Bar Controls -->
+      <div id="paginationBar" class="pagination-bar hidden">
+        <div class="pagination-info" id="paginationInfo">Menampilkan 1-10 dari 50 Petugas</div>
+        <div class="pagination-buttons">
+          <button type="button" id="btnPrevPage" class="btn-page-nav">&laquo; Sebelumnya</button>
+          <div id="pageNumbers" class="page-numbers-container"></div>
+          <button type="button" id="btnNextPage" class="btn-page-nav">Selanjutnya &raquo;</button>
+        </div>
+      </div>
+
       <!-- Empty State -->
       <div id="emptyState" class="empty-state hidden">
         <div class="empty-icon">

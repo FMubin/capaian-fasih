@@ -259,9 +259,17 @@ document.addEventListener('DOMContentLoaded', () => {
         continue;
       }
 
+      // 3. Compress to Lightweight WebP (~30-60 KB)
+      let fileToAdd = file;
+      try {
+        fileToAdd = await compressToLightweightWebP(file);
+      } catch (err) {
+        console.warn('WebP compression failed, using original file:', err);
+      }
+
       // Avoid duplicates
-      if (!listRef.some(f => f.name === file.name && f.size === file.size)) {
-        listRef.push(file);
+      if (!listRef.some(f => f.name === fileToAdd.name && f.size === fileToAdd.size)) {
+        listRef.push(fileToAdd);
         added++;
       }
     }
@@ -269,6 +277,53 @@ document.addEventListener('DOMContentLoaded', () => {
     if (added > 0) {
       renderFn();
     }
+  }
+
+  function compressToLightweightWebP(file) {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+
+        const MAX_WIDTH = 900;
+        const MAX_HEIGHT = 1350;
+        let width = img.naturalWidth;
+        let height = img.naturalHeight;
+
+        if (width > MAX_WIDTH) {
+          height = Math.round((height * MAX_WIDTH) / width);
+          width = MAX_WIDTH;
+        }
+        if (height > MAX_HEIGHT) {
+          width = Math.round((width * MAX_HEIGHT) / height);
+          height = MAX_HEIGHT;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (!blob) return resolve(file);
+          const webpName = file.name.replace(/\.[^/.]+$/, "") + ".webp";
+          const compressedFile = new File([blob], webpName, {
+            type: 'image/webp',
+            lastModified: Date.now()
+          });
+          console.log(`[WEBP COMPRESS] Original: ${(file.size / 1024).toFixed(1)} KB -> WebP: ${(compressedFile.size / 1024).toFixed(1)} KB`);
+          resolve(compressedFile);
+        }, 'image/webp', 0.65);
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(file);
+      };
+      img.src = url;
+    });
   }
 
   function getImageDimensions(file) {
