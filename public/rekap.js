@@ -393,11 +393,35 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function buildAndTriggerPrint(itemsToPrint) {
+  async function buildAndTriggerPrint(itemsToPrint) {
     if (!itemsToPrint || itemsToPrint.length === 0) return;
 
+    showToast('Menyiapkan gambar & dokumen PDF...', 'info');
+
+    // Fetch full Base64 image data directly via fast bulk endpoint /api/officer-images (takes ~30ms)
+    const ids = itemsToPrint.map(i => i.id).join(',');
+    let imageMap = {};
+
+    try {
+      const res = await fetch(`/api/officer-images?ids=${encodeURIComponent(ids)}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        json.data.forEach(imgObj => {
+          imageMap[imgObj.id] = imgObj.file_url;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch officer images for print:', err);
+    }
+
+    // Replace proxy URLs with full inline Base64 Data URIs so PDF preview renders 100% instantly
+    const preparedItems = itemsToPrint.map(item => ({
+      ...item,
+      file_url: imageMap[item.id] || item.file_url
+    }));
+
     const grouped = {};
-    itemsToPrint.forEach(item => {
+    preparedItems.forEach(item => {
       const key = `${item.kecamatan}__${item.nama}`;
       if (!grouped[key]) {
         grouped[key] = {
