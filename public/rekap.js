@@ -4,16 +4,30 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   let kecamatanList = [];
+  let masterPetugasList = [];
   let currentItems = [];
   let groupedOfficers = [];
   let currentPage = 1;
   const ITEMS_PER_PAGE = 10;
 
+  let currentTab = 'galeri';
+  let filteredStatusList = [];
+  let currentStatusPage = 1;
+  const STATUS_ITEMS_PER_PAGE = 50;
+
   const filterKecamatan = document.getElementById('filterKecamatan');
   const filterSearch = document.getElementById('filterSearch');
+  const filterStatus = document.getElementById('filterStatus');
+  const labelFilterStatus = document.getElementById('labelFilterStatus');
   const btnClearSearch = document.getElementById('btnClearSearch');
   const btnRefreshList = document.getElementById('btnRefreshList');
   const btnPrintAll = document.getElementById('btnPrintAll');
+  const btnExportExcel = document.getElementById('btnExportExcel');
+
+  const tabGaleri = document.getElementById('tabGaleri');
+  const tabStatus = document.getElementById('tabStatus');
+  const viewGaleri = document.getElementById('viewGaleri');
+  const viewStatus = document.getElementById('viewStatus');
 
   const mergedContainer = document.getElementById('mergedContainer');
   const emptyState = document.getElementById('emptyState');
@@ -118,8 +132,10 @@ document.addEventListener('DOMContentLoaded', () => {
       const res = await fetch('/api/master-data');
       const json = await res.json();
       if (json.success) {
+        masterPetugasList = json.data || [];
         kecamatanList = json.kecamatan || [];
         populateKecamatanDropdown();
+        renderStatusMonitoring();
       }
     } catch (err) {
       console.error('Failed to fetch master data:', err);
@@ -151,6 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (json.success) {
         currentItems = json.data;
         groupOfficersAndRender(currentItems);
+        renderStatusMonitoring();
       }
     } catch (err) {
       console.error('Failed to fetch list:', err);
@@ -329,24 +346,310 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
+  // Tab Switching Handlers
+  if (tabGaleri && tabStatus) {
+    tabGaleri.addEventListener('click', () => {
+      currentTab = 'galeri';
+      tabGaleri.style.borderBottomColor = '#0f4c81';
+      tabGaleri.style.color = '#0f4c81';
+      tabStatus.style.borderBottomColor = 'transparent';
+      tabStatus.style.color = '#64748b';
+      viewGaleri.classList.remove('hidden');
+      viewStatus.classList.add('hidden');
+      if (filterStatus) filterStatus.classList.add('hidden');
+      if (labelFilterStatus) labelFilterStatus.classList.add('hidden');
+    });
+
+    tabStatus.addEventListener('click', () => {
+      currentTab = 'status';
+      tabStatus.style.borderBottomColor = '#0f4c81';
+      tabStatus.style.color = '#0f4c81';
+      tabGaleri.style.borderBottomColor = 'transparent';
+      tabGaleri.style.color = '#64748b';
+      viewStatus.classList.remove('hidden');
+      viewGaleri.classList.add('hidden');
+      if (filterStatus) filterStatus.classList.remove('hidden');
+      if (labelFilterStatus) labelFilterStatus.classList.remove('hidden');
+      renderStatusMonitoring();
+    });
+  }
+
+  if (filterStatus) {
+    filterStatus.addEventListener('change', renderStatusMonitoring);
+  }
+
+  // STATUS MONITORING TABLE & SUMMARY RENDERER
+  function renderStatusMonitoring() {
+    if (!masterPetugasList || masterPetugasList.length === 0) return;
+
+    // Create a map of uploaded screenshots by "kecamatan__nama"
+    const uploadedMap = {};
+    currentItems.forEach(item => {
+      const key = `${(item.kecamatan || '').toLowerCase().trim()}__${(item.nama || '').toLowerCase().trim()}`;
+      if (!uploadedMap[key]) {
+        uploadedMap[key] = {
+          capaianCount: 0,
+          hapusCount: 0,
+          total: 0,
+          lastTime: item.created_at
+        };
+      }
+      if ((item.jenis || '').includes('Hapus')) {
+        uploadedMap[key].hapusCount++;
+      } else {
+        uploadedMap[key].capaianCount++;
+      }
+      uploadedMap[key].total++;
+      if (new Date(item.created_at) > new Date(uploadedMap[key].lastTime)) {
+        uploadedMap[key].lastTime = item.created_at;
+      }
+    });
+
+    // Match all master officers against uploadedMap
+    const fullStatusList = masterPetugasList.map(p => {
+      const key = `${(p.kecamatan || '').toLowerCase().trim()}__${(p.nama || '').toLowerCase().trim()}`;
+      const uploadData = uploadedMap[key];
+      const isUploaded = Boolean(uploadData && uploadData.total > 0);
+
+      return {
+        nama: p.nama,
+        posisi: p.posisi || 'PPL Sensus',
+        kecamatan: p.kecamatan,
+        status: isUploaded ? 'SUDAH' : 'BELUM',
+        countCapaian: uploadData ? uploadData.capaianCount : 0,
+        countHapus: uploadData ? uploadData.hapusCount : 0,
+        totalScreenshots: uploadData ? uploadData.total : 0,
+        lastUploadTime: uploadData ? uploadData.lastTime : null
+      };
+    });
+
+    // Summary Card Stats
+    const totalMaster = fullStatusList.length;
+    const countSudah = fullStatusList.filter(s => s.status === 'SUDAH').length;
+    const countBelum = totalMaster - countSudah;
+
+    const percentSudah = totalMaster > 0 ? ((countSudah / totalMaster) * 100).toFixed(1) : '0';
+    const percentBelum = totalMaster > 0 ? ((countBelum / totalMaster) * 100).toFixed(1) : '0';
+
+    const elTotal = document.getElementById('sumTotalPetugas');
+    const elSudah = document.getElementById('sumSudahUpload');
+    const elBelum = document.getElementById('sumBelumUpload');
+
+    if (elTotal) elTotal.textContent = `${totalMaster.toLocaleString('id-ID')} Petugas`;
+    if (elSudah) elSudah.textContent = `${countSudah.toLocaleString('id-ID')} Petugas (${percentSudah}%)`;
+    if (elBelum) elBelum.textContent = `${countBelum.toLocaleString('id-ID')} Petugas (${percentBelum}%)`;
+
+    // Filtering based on Kecamatan, Search, and Status
+    const selectedKec = filterKecamatan.value || 'SEMUA';
+    const q = filterSearch.value.trim().toLowerCase();
+    const statusVal = (filterStatus && filterStatus.value) || 'SEMUA';
+
+    filteredStatusList = fullStatusList.filter(p => {
+      if (selectedKec !== 'SEMUA' && p.kecamatan.toLowerCase() !== selectedKec.toLowerCase()) return false;
+      if (statusVal !== 'SEMUA' && p.status !== statusVal) return false;
+      if (q) {
+        const matchName = p.nama.toLowerCase().includes(q);
+        const matchKec = p.kecamatan.toLowerCase().includes(q);
+        const matchPos = p.posisi.toLowerCase().includes(q);
+        if (!matchName && !matchKec && !matchPos) return false;
+      }
+      return true;
+    });
+
+    currentStatusPage = 1;
+    renderStatusTablePage();
+  }
+
+  function renderStatusTablePage() {
+    const tableBody = document.getElementById('tableStatusBody');
+    if (!tableBody) return;
+
+    if (filteredStatusList.length === 0) {
+      tableBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 2rem; color: #64748b;">Tidak ada data petugas yang cocok dengan filter.</td></tr>`;
+      const statusPagBar = document.getElementById('statusPaginationBar');
+      if (statusPagBar) statusPagBar.classList.add('hidden');
+      return;
+    }
+
+    const startIndex = (currentStatusPage - 1) * STATUS_ITEMS_PER_PAGE;
+    const endIndex = Math.min(startIndex + STATUS_ITEMS_PER_PAGE, filteredStatusList.length);
+    const pageItems = filteredStatusList.slice(startIndex, endIndex);
+
+    let html = '';
+    pageItems.forEach((p, idx) => {
+      const num = startIndex + idx + 1;
+      const statusBadge = p.status === 'SUDAH'
+        ? `<span class="badge-sub-status sudah"><i class="fa-solid fa-circle-check"></i> Sudah Upload</span>`
+        : `<span class="badge-sub-status belum"><i class="fa-solid fa-circle-xmark"></i> Belum Upload</span>`;
+
+      const detailText = p.status === 'SUDAH'
+        ? `<strong>${p.totalScreenshots} File</strong> (${p.countCapaian} Capaian, ${p.countHapus} Hapus)`
+        : `<span style="color: #94a3b8;">-</span>`;
+
+      const timeText = p.lastUploadTime
+        ? formatDate(p.lastUploadTime)
+        : `<span style="color: #94a3b8;">-</span>`;
+
+      html += `
+        <tr>
+          <td style="font-weight: 600; color: #64748b;">${num}</td>
+          <td style="font-weight: 700; color: #0f172a;">${escapeHTML(p.nama)}</td>
+          <td>${escapeHTML(p.posisi)}</td>
+          <td><span style="font-weight: 600; color: #0284c7;">${escapeHTML(p.kecamatan)}</span></td>
+          <td style="text-align: center;">${statusBadge}</td>
+          <td style="text-align: center;">${detailText}</td>
+          <td style="font-size: 0.8rem; color: #475569;">${timeText}</td>
+        </tr>
+      `;
+    });
+
+    tableBody.innerHTML = html;
+    renderStatusPagination(filteredStatusList.length);
+  }
+
+  function renderStatusPagination(totalItems) {
+    const statusPagBar = document.getElementById('statusPaginationBar');
+    const statusPagInfo = document.getElementById('statusPaginationInfo');
+    const statusPageNums = document.getElementById('statusPageNumbers');
+    const btnPrev = document.getElementById('btnStatusPrevPage');
+    const btnNext = document.getElementById('btnStatusNextPage');
+
+    if (!statusPagBar || totalItems <= STATUS_ITEMS_PER_PAGE) {
+      if (statusPagBar) statusPagBar.classList.add('hidden');
+      return;
+    }
+
+    statusPagBar.classList.remove('hidden');
+
+    const totalPages = Math.ceil(totalItems / STATUS_ITEMS_PER_PAGE);
+    currentStatusPage = Math.max(1, Math.min(currentStatusPage, totalPages));
+
+    const startIdx = (currentStatusPage - 1) * STATUS_ITEMS_PER_PAGE + 1;
+    const endIdx = Math.min(currentStatusPage * STATUS_ITEMS_PER_PAGE, totalItems);
+
+    statusPagInfo.textContent = `Menampilkan ${startIdx}-${endIdx} dari ${totalItems.toLocaleString('id-ID')} Petugas`;
+
+    btnPrev.disabled = currentStatusPage === 1;
+    btnNext.disabled = currentStatusPage === totalPages;
+
+    btnPrev.onclick = () => {
+      if (currentStatusPage > 1) {
+        currentStatusPage--;
+        renderStatusTablePage();
+      }
+    };
+
+    btnNext.onclick = () => {
+      if (currentStatusPage < totalPages) {
+        currentStatusPage++;
+        renderStatusTablePage();
+      }
+    };
+
+    let pagesHTML = '';
+    const maxButtons = 5;
+    let startPage = Math.max(1, currentStatusPage - 2);
+    let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+    if (endPage - startPage < maxButtons - 1) {
+      startPage = Math.max(1, endPage - maxButtons + 1);
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+      const activeClass = i === currentStatusPage ? 'active' : '';
+      pagesHTML += `<button type="button" class="page-btn ${activeClass}" onclick="goToStatusPage(${i})">${i}</button>`;
+    }
+    statusPageNums.innerHTML = pagesHTML;
+  }
+
+  window.goToStatusPage = function(pageNum) {
+    currentStatusPage = pageNum;
+    renderStatusTablePage();
+  };
+
+  // Export Status List to Excel (.xlsx)
+  if (btnExportExcel) {
+    btnExportExcel.addEventListener('click', () => {
+      if (!filteredStatusList || filteredStatusList.length === 0) {
+        renderStatusMonitoring();
+      }
+
+      if (!filteredStatusList || filteredStatusList.length === 0) {
+        showToast('Tidak ada data petugas yang cocok untuk diexport ke Excel.', 'danger');
+        return;
+      }
+
+      const selectedKec = filterKecamatan.value || 'SEMUA';
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const filename = `Rekap_Status_Upload_FASIH_${selectedKec.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.xlsx`;
+
+      exportStatusListToExcel(filteredStatusList, filename);
+    });
+  }
+
+  function exportStatusListToExcel(list, filename) {
+    showToast('Menyiapkan file Excel (.xlsx)...', 'info');
+
+    const excelRows = list.map((item, idx) => ({
+      'No': idx + 1,
+      'Nama Lengkap Petugas': item.nama,
+      'Posisi Petugas': item.posisi,
+      'Kecamatan Tugas': item.kecamatan,
+      'Status Upload': item.status === 'SUDAH' ? 'Sudah Upload' : 'Belum Upload',
+      'Jumlah Screenshot Capaian': item.countCapaian || 0,
+      'Jumlah Screenshot Hapus': item.countHapus || 0,
+      'Total File Screenshot': item.totalScreenshots || 0,
+      'Waktu Upload Terakhir': item.lastUploadTime ? formatDate(item.lastUploadTime) : '-'
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelRows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Rekap Status Upload');
+
+    // Set column widths
+    worksheet['!cols'] = [
+      { wch: 6 },  // No
+      { wch: 32 }, // Nama
+      { wch: 42 }, // Posisi
+      { wch: 22 }, // Kecamatan
+      { wch: 20 }, // Status
+      { wch: 26 }, // Capaian
+      { wch: 26 }, // Hapus
+      { wch: 20 }, // Total
+      { wch: 28 }  // Waktu
+    ];
+
+    XLSX.writeFile(workbook, filename);
+    showToast(`File Excel "${filename}" berhasil diunduh!`, 'success');
+  }
+
   // Filter Events
-  filterKecamatan.addEventListener('change', fetchCapaianList);
+  filterKecamatan.addEventListener('change', () => {
+    fetchCapaianList();
+    if (currentTab === 'status') renderStatusMonitoring();
+  });
 
   let searchTimeout;
   filterSearch.addEventListener('input', (e) => {
     if (e.target.value.trim() !== '') btnClearSearch.classList.remove('hidden');
     else btnClearSearch.classList.add('hidden');
     clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(fetchCapaianList, 300);
+    searchTimeout = setTimeout(() => {
+      fetchCapaianList();
+      if (currentTab === 'status') renderStatusMonitoring();
+    }, 300);
   });
 
   btnClearSearch.addEventListener('click', () => {
     filterSearch.value = '';
     btnClearSearch.classList.add('hidden');
     fetchCapaianList();
+    if (currentTab === 'status') renderStatusMonitoring();
   });
 
-  btnRefreshList.addEventListener('click', fetchCapaianList);
+  btnRefreshList.addEventListener('click', () => {
+    fetchCapaianList();
+    if (currentTab === 'status') renderStatusMonitoring();
+  });
 
   const btnDownloadFiltered = document.getElementById('btnDownloadFiltered');
   if (btnDownloadFiltered) {
