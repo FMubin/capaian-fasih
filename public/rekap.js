@@ -81,6 +81,12 @@ document.addEventListener('DOMContentLoaded', () => {
       
       if (!confirm(confirmMsg)) return;
 
+      // Optimistic UI Update for instant 0ms visual feedback
+      const previousState = isMaintenanceActive;
+      isMaintenanceActive = nextState;
+      updateMaintenanceUI();
+      btnToggleMaintenance.disabled = true;
+
       try {
         const res = await fetch('/api/maintenance', {
           method: 'POST',
@@ -89,12 +95,20 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const json = await res.json();
         if (json.success) {
-          isMaintenanceActive = json.maintenance;
+          isMaintenanceActive = Boolean(json.maintenance);
           updateMaintenanceUI();
           showToast(json.message, 'success');
+        } else {
+          isMaintenanceActive = previousState;
+          updateMaintenanceUI();
+          showToast(json.message || 'Gagal mengubah mode maintenance', 'danger');
         }
       } catch (err) {
+        isMaintenanceActive = previousState;
+        updateMaintenanceUI();
         showToast('Gagal mengubah mode maintenance', 'danger');
+      } finally {
+        btnToggleMaintenance.disabled = false;
       }
     });
   }
