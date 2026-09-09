@@ -509,9 +509,31 @@ app.post('/api/petugas', async (req, res) => {
   });
 });
 
-// 2.9 Stream Single Image by ID with 1-Year Browser Caching to prevent Egress overconsumption
+// 2.9 Stream Single Image by ID with 1-Year Browser Caching & Full CORS Support
 app.get('/api/capaian/image/:id', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+
   const { id } = req.params;
+
+  const serveFileUrl = (fileUrl) => {
+    if (!fileUrl) return res.status(404).send('Gambar tidak ditemukan.');
+
+    if (fileUrl.startsWith('data:')) {
+      const parts = fileUrl.split(';base64,');
+      if (parts.length === 2) {
+        const mimeType = parts[0].replace('data:', '').trim() || 'image/webp';
+        const cleanBase64 = parts[1].replace(/[\r\n\s]/g, '');
+        const imgBuffer = Buffer.from(cleanBase64, 'base64');
+
+        res.setHeader('Content-Type', mimeType);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.send(imgBuffer);
+      }
+    }
+    return res.redirect(fileUrl);
+  };
+
   const useMultiRow = await isMultiRowTableAvailable();
 
   if (useMultiRow) {
@@ -525,18 +547,7 @@ app.get('/api/capaian/image/:id', async (req, res) => {
       if (response.ok) {
         const rows = await response.json();
         if (rows.length > 0 && rows[0].file_url) {
-          const fileUrl = rows[0].file_url;
-          if (fileUrl.startsWith('data:')) {
-            const matches = fileUrl.match(/^data:(.+?);base64,(.+)$/);
-            if (matches) {
-              const contentType = matches[1];
-              const imgBuffer = Buffer.from(matches[2], 'base64');
-              res.setHeader('Content-Type', contentType);
-              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-              return res.send(imgBuffer);
-            }
-          }
-          return res.redirect(fileUrl);
+          return serveFileUrl(rows[0].file_url);
         }
       }
     } catch (err) {
@@ -548,15 +559,7 @@ app.get('/api/capaian/image/:id', async (req, res) => {
   const db = await readDB();
   const item = (db.capaian || []).find(c => c.id === id);
   if (item && item.file_url) {
-    if (item.file_url.startsWith('data:')) {
-      const matches = item.file_url.match(/^data:(.+?);base64,(.+)$/);
-      if (matches) {
-        res.setHeader('Content-Type', matches[1]);
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(Buffer.from(matches[2], 'base64'));
-      }
-    }
-    return res.redirect(item.file_url);
+    return serveFileUrl(item.file_url);
   }
 
   res.status(404).send('Gambar tidak ditemukan.');
