@@ -526,6 +526,13 @@ body.bg-rekap-page {
     color: #000000 !important;
   }
 
+  .print-page-wrapper {
+    box-sizing: border-box;
+    width: 100%;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
   .print-page-break {
     page-break-before: always !important;
     break-before: page !important;

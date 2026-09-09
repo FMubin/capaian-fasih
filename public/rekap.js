@@ -441,8 +441,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const nowStr = new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' });
 
     let printHTML = '';
+    let globalPageCounter = 1;
 
-    Object.values(grouped).forEach((group, index) => {
+    Object.values(grouped).forEach((group) => {
       // Separate screenshots into Capaian vs Hapus
       const capaianList = group.screenshots.filter(s => !(s.jenis || '').includes('Hapus'));
       const hapusList = group.screenshots.filter(s => (s.jenis || '').includes('Hapus'));
@@ -457,13 +458,16 @@ document.addEventListener('DOMContentLoaded', () => {
       const hapusGridClass = isHapusCompact ? 'print-grid grid-compact' : 'print-grid';
 
       // ----------------------------------------------------
-      // HALAMAN 1 PRINT: CAPAIAN PETUGAS
+      // CAPAIAN PETUGAS PAGE
       // ----------------------------------------------------
+      const capaianPageNum = globalPageCounter++;
+      const capaianBreakClass = capaianPageNum === 1 ? '' : 'print-page-break';
+
       printHTML += `
-        <div class="print-page-wrapper">
+        <div class="print-page-wrapper ${capaianBreakClass}">
           <div class="print-header">
             <h2>BADAN PUSAT STATISTIK</h2>
-            <p>HALAMAN 1: REKAPITULASI DOKUMENTASI CAPAIAN PETUGAS</p>
+            <p>HALAMAN ${capaianPageNum}: REKAPITULASI DOKUMENTASI CAPAIAN PETUGAS</p>
             <small>REKAP CAPAIAN FASIH - ${group.nama.toUpperCase()} (${group.kecamatan.toUpperCase()}) &bull; Tanggal Cetak: ${nowStr}</small>
           </div>
 
@@ -493,13 +497,15 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
 
       // ----------------------------------------------------
-      // HALAMAN 2 PRINT: HAPUS APLIKASI FASIH / PERIODE SENSUS
+      // HAPUS APLIKASI FASIH PAGE
       // ----------------------------------------------------
+      const hapusPageNum = globalPageCounter++;
+
       printHTML += `
         <div class="print-page-wrapper print-page-break">
           <div class="print-header">
             <h2>BADAN PUSAT STATISTIK</h2>
-            <p>HALAMAN 2: REKAPITULASI HAPUS APLIKASI FASIH / PERIODE SENSUS</p>
+            <p>HALAMAN ${hapusPageNum}: REKAPITULASI HAPUS APLIKASI FASIH / PERIODE SENSUS</p>
             <small>REKAP HAPUS FASIH - ${group.nama.toUpperCase()} (${group.kecamatan.toUpperCase()}) &bull; Tanggal Cetak: ${nowStr}</small>
           </div>
 
