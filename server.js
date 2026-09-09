@@ -519,19 +519,41 @@ app.get('/api/capaian/image/:id', async (req, res) => {
   const serveFileUrl = (fileUrl) => {
     if (!fileUrl) return res.status(404).send('Gambar tidak ditemukan.');
 
+    // 1. Direct HTTP/HTTPS link -> redirect directly
+    if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+      return res.redirect(fileUrl);
+    }
+
+    // 2. Data URI or Raw Base64 string -> decode to binary image buffer
+    let cleanBase64 = fileUrl;
+    let mimeType = 'image/webp';
+
     if (fileUrl.startsWith('data:')) {
       const parts = fileUrl.split(';base64,');
       if (parts.length === 2) {
-        const mimeType = parts[0].replace('data:', '').trim() || 'image/webp';
-        const cleanBase64 = parts[1].replace(/[\r\n\s]/g, '');
-        const imgBuffer = Buffer.from(cleanBase64, 'base64');
-
-        res.setHeader('Content-Type', mimeType);
-        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
-        return res.send(imgBuffer);
+        mimeType = parts[0].replace('data:', '').trim() || 'image/webp';
+        cleanBase64 = parts[1];
       }
+    } else if (fileUrl.startsWith('iVBORw0KG')) {
+      mimeType = 'image/png';
+    } else if (fileUrl.startsWith('/9j/')) {
+      mimeType = 'image/jpeg';
+    } else if (fileUrl.startsWith('R0lGOD')) {
+      mimeType = 'image/gif';
     }
-    return res.redirect(fileUrl);
+
+    // Remove newlines, carriage returns, and spaces
+    cleanBase64 = cleanBase64.replace(/[\r\n\s]/g, '');
+
+    try {
+      const imgBuffer = Buffer.from(cleanBase64, 'base64');
+      res.setHeader('Content-Type', mimeType);
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      return res.send(imgBuffer);
+    } catch (e) {
+      console.error('Base64 decode error:', e);
+      return res.status(500).send('Gagal memproses gambar.');
+    }
   };
 
   const useMultiRow = await isMultiRowTableAvailable();

@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <i class="fa-solid fa-eye"></i> Tampilkan ${group.screenshots.length} Screenshot
               </button>
               <button type="button" class="btn-print" style="background: #0284c7;" onclick="downloadOfficerZip('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
-                <i class="fa-solid fa-file-zipper"></i> Unduh ZIP
+                <i class="fa-solid fa-download"></i> Unduh
               </button>
               <button type="button" class="btn-print" onclick="printSingleOfficerReport('${escapeHTML(group.kecamatan)}', '${escapeHTML(group.nama)}')">
                 <i class="fa-solid fa-print"></i> Cetak Lembar
