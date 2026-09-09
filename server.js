@@ -597,8 +597,10 @@ app.get('/api/officer-images', async (req, res) => {
       if (kecamatan && nama) {
         queryUrl += `&kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}`;
       } else if (ids) {
-        const idList = ids.split(',').map(i => encodeURIComponent(i.trim())).join(',');
-        queryUrl += `&id=in.(${idList})`;
+        const formattedIds = ids.split(',')
+          .map(i => `"${i.trim().replace(/"/g, '')}"`)
+          .join(',');
+        queryUrl += `&id=in.(${formattedIds})`;
       }
 
       const response = await fetch(queryUrl, {
@@ -623,6 +625,9 @@ app.get('/api/officer-images', async (req, res) => {
           };
         });
         return res.json({ success: true, data: rows });
+      } else {
+        const errText = await response.text();
+        console.error('[OFFICER-IMAGES ERROR]:', response.status, errText);
       }
     } catch (err) {
       console.error('Error fetching officer images:', err);

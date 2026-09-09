@@ -398,7 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     showToast('Menyiapkan gambar & dokumen PDF...', 'info');
 
-    // Fetch full Base64 image data directly via fast bulk endpoint /api/officer-images (takes ~30ms)
+    // 1. Try fast bulk fetch via /api/officer-images
     const ids = itemsToPrint.map(i => i.id).join(',');
     let imageMap = {};
 
@@ -414,10 +414,14 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error('Failed to fetch officer images for print:', err);
     }
 
-    // Replace proxy URLs with full inline Base64 Data URIs so PDF preview renders 100% instantly
-    const preparedItems = itemsToPrint.map(item => ({
-      ...item,
-      file_url: imageMap[item.id] || item.file_url
+    // 2. Convert all item URLs to full inline Base64 Data URIs so PDF preview renders 100% crisp & complete
+    const preparedItems = await Promise.all(itemsToPrint.map(async item => {
+      let targetUrl = imageMap[item.id] || item.file_url;
+      const inlineDataUri = await getBase64DataURI(targetUrl);
+      return {
+        ...item,
+        file_url: inlineDataUri
+      };
     }));
 
     const grouped = {};
