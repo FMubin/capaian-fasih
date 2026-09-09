@@ -398,13 +398,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     showToast('Menyiapkan gambar & dokumen PDF...', 'info');
 
-    // Pre-convert all image URLs to inline Base64 Data URIs so Chrome/Edge print preview renders them INSTANTLY with 0ms network delay!
-    const preparedItems = await Promise.all(itemsToPrint.map(async item => {
-      const inlineDataUri = await getBase64DataURI(item.file_url);
-      return {
-        ...item,
-        file_url: inlineDataUri
-      };
+    // Fetch full Base64 image data directly via fast bulk endpoint /api/officer-images
+    const ids = itemsToPrint.map(i => i.id).join(',');
+    let imageMap = {};
+
+    try {
+      const res = await fetch(`/api/officer-images?ids=${encodeURIComponent(ids)}`);
+      const json = await res.json();
+      if (json.success && Array.isArray(json.data)) {
+        json.data.forEach(imgObj => {
+          imageMap[imgObj.id] = imgObj.file_url;
+        });
+      }
+    } catch (err) {
+      console.error('Failed to fetch officer images for print:', err);
+    }
+
+    // Replace proxy URLs with full inline Base64 Data URIs so PDF preview renders 100% instantly
+    const preparedItems = itemsToPrint.map(item => ({
+      ...item,
+      file_url: imageMap[item.id] || item.file_url
     }));
 
     const grouped = {};

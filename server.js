@@ -586,6 +586,67 @@ app.get('/api/capaian/image/:id', async (req, res) => {
 
   res.status(404).send('Gambar tidak ditemukan.');
 });
+app.get('/api/officer-images', async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  const { kecamatan, nama, ids } = req.query;
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      let queryUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=id,file_url,drive_file_id`;
+      if (kecamatan && nama) {
+        queryUrl += `&kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}`;
+      } else if (ids) {
+        const idList = ids.split(',').map(i => encodeURIComponent(i.trim())).join(',');
+        queryUrl += `&id=in.(${idList})`;
+      }
+
+      const response = await fetch(queryUrl, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+
+      if (response.ok) {
+        let rows = await response.json();
+        rows = rows.map(item => {
+          let finalUrl = item.file_url || '';
+          if (item.drive_file_id) {
+            finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
+          } else if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
+            finalUrl = `data:image/webp;base64,${finalUrl}`;
+          }
+          return {
+            id: item.id,
+            file_url: finalUrl
+          };
+        });
+        return res.json({ success: true, data: rows });
+      }
+    } catch (err) {
+      console.error('Error fetching officer images:', err);
+    }
+  }
+
+  // Fallback DB
+  const db = await readDB();
+  let list = db.capaian || [];
+  if (kecamatan && nama) {
+    list = list.filter(item => item.kecamatan.toLowerCase() === kecamatan.toLowerCase() && item.nama.toLowerCase() === nama.toLowerCase());
+  }
+  const result = list.map(item => {
+    let finalUrl = item.file_url || '';
+    if (item.drive_file_id) {
+      finalUrl = `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`;
+    } else if (finalUrl && !finalUrl.startsWith('data:') && !finalUrl.startsWith('http')) {
+      finalUrl = `data:image/webp;base64,${finalUrl}`;
+    }
+    return { id: item.id, file_url: finalUrl };
+  });
+
+  res.json({ success: true, data: result });
+});
 
 // 3. Get All Capaian Screenshots (Lightweight Metadata Proxy - 0% Heavy Base64 Transfer)
 app.get('/api/capaian', async (req, res) => {
