@@ -379,23 +379,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // STATUS MONITORING TABLE & SUMMARY RENDERER
-  function cleanName(raw) {
-    if (!raw) return '';
-    return raw.split('(')[0].replace(/[-_]/g, ' ').trim().toLowerCase();
-  }
-
   function renderStatusMonitoring() {
     if (!masterPetugasList || masterPetugasList.length === 0) return;
 
-    // Create maps of uploaded screenshots by "kecamatan__nama" and fallback clean name
+    // Create a map of uploaded screenshots by "kecamatan__nama" (lowercased)
     const uploadedMapByKey = {};
-    const uploadedMapByCleanName = {};
 
     currentItems.forEach(item => {
       const kKec = (item.kecamatan || '').toLowerCase().trim();
       const kNama = (item.nama || '').toLowerCase().trim();
       const fullKey = `${kKec}__${kNama}`;
-      const cName = cleanName(item.nama);
 
       if (!uploadedMapByKey[fullKey]) {
         uploadedMapByKey[fullKey] = {
@@ -408,9 +401,6 @@ document.addEventListener('DOMContentLoaded', () => {
           total: 0,
           lastTime: item.created_at
         };
-      }
-      if (!uploadedMapByCleanName[cName]) {
-        uploadedMapByCleanName[cName] = uploadedMapByKey[fullKey];
       }
 
       if ((item.jenis || '').includes('Hapus')) {
@@ -426,28 +416,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const usedUploadKeys = new Set();
 
-    // Match all master officers against uploadedMap
+    // Match all master officers strictly by kecamatan + nama
     const fullStatusList = masterPetugasList.map(p => {
       const kKec = (p.kecamatan || '').toLowerCase().trim();
       const kNama = (p.nama || '').toLowerCase().trim();
       const fullKey = `${kKec}__${kNama}`;
-      const cName = cleanName(p.nama);
 
       let uploadData = null;
-      let matchedKey = null;
-
       if (uploadedMapByKey[fullKey] && !usedUploadKeys.has(fullKey)) {
         uploadData = uploadedMapByKey[fullKey];
-        matchedKey = fullKey;
-      } else if (uploadedMapByCleanName[cName] && !usedUploadKeys.has(uploadedMapByCleanName[cName].fullKey)) {
-        uploadData = uploadedMapByCleanName[cName];
-        matchedKey = uploadData.fullKey;
+        usedUploadKeys.add(fullKey);
       }
 
       const isUploaded = Boolean(uploadData && uploadData.total > 0);
-      if (isUploaded && uploadData) {
-        usedUploadKeys.add(matchedKey);
-      }
 
       return {
         nama: p.nama,
