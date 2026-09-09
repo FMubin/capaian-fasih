@@ -113,14 +113,14 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
 async function uploadToGoogleDrive(buffer, filename, mimetype) {
   if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
     console.log('[GOOGLE DRIVE] Credentials missing in environment variables');
-    return null;
+    return { fileId: null, error: 'Credentials missing' };
   }
 
   try {
     const authResult = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
     if (!authResult.token) {
       console.error('[GOOGLE DRIVE UPLOAD FAILED]: Token error:', authResult.error);
-      return null;
+      return { fileId: null, error: authResult.error };
     }
     const accessToken = authResult.token;
 
@@ -159,7 +159,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
     const uploadJson = await uploadRes.json();
     if (!uploadJson.id) {
       console.error('[GOOGLE DRIVE UPLOAD ERROR]:', JSON.stringify(uploadJson));
-      return null;
+      return { fileId: null, error: uploadJson };
     }
 
     const fileId = uploadJson.id;
@@ -189,11 +189,12 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
     return {
       fileId,
       fileUrl,
-      viewUrl
+      viewUrl,
+      error: null
     };
   } catch (err) {
     console.error('[GOOGLE DRIVE UPLOAD EXCEPTION]:', err && err.message ? err.message : err);
-    return null;
+    return { fileId: null, error: err && err.message ? err.message : String(err) };
   }
 }
 
@@ -396,7 +397,8 @@ app.get('/api/test-drive', async (req, res) => {
   if (!driveResult || !driveResult.fileId) {
     return res.json({
       success: false,
-      message: 'Auth sukses, TETAPI gagal membuat file di folder Google Drive! Pastikan folder sudah di-share ke email Service Account dengan akses Editor.',
+      message: 'Auth sukses, TETAPI Google Drive API menolak unggah file!',
+      driveError: driveResult ? driveResult.error : 'Unknown upload error',
       config: {
         email: cleanString(GOOGLE_CLIENT_EMAIL),
         folderId: cleanString(GOOGLE_FOLDER_ID)
