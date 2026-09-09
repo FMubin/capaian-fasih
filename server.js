@@ -31,8 +31,24 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
                      process.env.SUPABASE_ANON_KEY || 
                      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
+// Helper to check if multi-row table `capaian_records` exists in Supabase
+async function isMultiRowTableAvailable() {
+  if (!SUPABASE_URL || !SUPABASE_KEY) return false;
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?select=id&limit=1`, {
+      headers: {
+        'apikey': SUPABASE_KEY,
+        'Authorization': `Bearer ${SUPABASE_KEY}`
+      }
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+// Single-row fallback DB reader/writer for legacy app_data / KV / file
 async function readDB() {
-  // 1. If Supabase environment variables exist, read from Supabase Cloud!
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
       const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?id=eq.capaian_db&select=data`, {
@@ -60,7 +76,6 @@ async function readDB() {
     }
   }
 
-  // 2. If Vercel KV / Upstash environment variables exist, read from KV!
   if (KV_URL && KV_TOKEN) {
     try {
       const res = await fetch(`${KV_URL}/get/capaian_db`, {
@@ -85,7 +100,6 @@ async function readDB() {
     }
   }
 
-  // 3. Fallback to local file /tmp or data/db.json
   try {
     let fileToRead = RUNTIME_DB_FILE;
     if (!fs.existsSync(fileToRead)) {
@@ -109,7 +123,6 @@ async function readDB() {
 }
 
 async function writeDB(data) {
-  // 1. If Supabase environment variables exist, write to Supabase Cloud!
   if (SUPABASE_URL && SUPABASE_KEY) {
     try {
       await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
@@ -131,7 +144,6 @@ async function writeDB(data) {
     }
   }
 
-  // 2. If Vercel KV / Upstash environment variables exist, write to Cloud KV!
   if (KV_URL && KV_TOKEN) {
     try {
       await fetch(`${KV_URL}/set/capaian_db`, {
@@ -148,7 +160,6 @@ async function writeDB(data) {
     }
   }
 
-  // 3. Fallback to local file /tmp or data/db.json
   try {
     fs.writeFileSync(RUNTIME_DB_FILE, JSON.stringify(data, null, 2));
     return true;
@@ -245,12 +256,48 @@ app.post('/api/petugas', async (req, res) => {
   });
 });
 
-// 3. Get All Capaian Screenshots
+// 3. Get All Capaian Screenshots (Supports multi-row Supabase table with legacy fallback)
 app.get('/api/capaian', async (req, res) => {
+  const { kecamatan, search } = req.query;
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      let queryUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=*&order=created_at.desc`;
+      if (kecamatan && kecamatan !== 'SEMUA') {
+        queryUrl += `&kecamatan=ilike.${encodeURIComponent(kecamatan)}`;
+      }
+      const response = await fetch(queryUrl, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+
+      if (response.ok) {
+        let list = await response.json();
+        if (search) {
+          const q = search.toLowerCase();
+          list = list.filter(item =>
+            (item.nama && item.nama.toLowerCase().includes(q)) ||
+            (item.posisi && item.posisi.toLowerCase().includes(q)) ||
+            (item.kecamatan && item.kecamatan.toLowerCase().includes(q))
+          );
+        }
+        return res.json({
+          success: true,
+          total: list.length,
+          data: list
+        });
+      }
+    } catch (err) {
+      console.error('Error fetching multi-row capaian_records:', err);
+    }
+  }
+
+  // Fallback to legacy single JSON
   const db = await readDB();
   let list = db.capaian || [];
-
-  const { kecamatan, search } = req.query;
 
   if (kecamatan && kecamatan !== 'SEMUA') {
     list = list.filter(item => item.kecamatan.toLowerCase() === kecamatan.toLowerCase());
@@ -281,6 +328,30 @@ app.get('/api/check-status', async (req, res) => {
     return res.json({ success: true, uploaded: false });
   }
 
+  const useMultiRow = await isMultiRowTableAvailable();
+  if (useMultiRow) {
+    try {
+      const checkUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=id&kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}`;
+      const response = await fetch(checkUrl, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (response.ok) {
+        const rows = await response.json();
+        return res.json({
+          success: true,
+          uploaded: rows.length > 0,
+          count: rows.length
+        });
+      }
+    } catch (err) {
+      console.error('Error checking multi-row status:', err);
+    }
+  }
+
+  // Fallback check
   const db = await readDB();
   const exists = db.capaian.some(
     item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
@@ -317,22 +388,47 @@ app.post('/api/capaian', upload.fields([
       return res.status(400).json({ success: false, message: 'Kecamatan dan Nama Petugas wajib dipilih!' });
     }
 
-    const db = await readDB();
+    const useMultiRow = await isMultiRowTableAvailable();
 
-    // STRICT CONSTRAINT: Reject if officer has ALREADY uploaded
-    const alreadyUploaded = db.capaian.some(
-      item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
-              item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
-    );
+    // Check if officer already uploaded
+    if (useMultiRow) {
+      try {
+        const checkUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=id&kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}&limit=1`;
+        const checkRes = await fetch(checkUrl, {
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`
+          }
+        });
+        if (checkRes.ok) {
+          const rows = await checkRes.json();
+          if (rows.length > 0) {
+            return res.status(400).json({
+              success: false,
+              message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error checking upload status:', err);
+      }
+    } else {
+      const dbCheck = await readDB();
+      const alreadyUploaded = dbCheck.capaian.some(
+        item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
+                item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
+      );
 
-    if (alreadyUploaded) {
-      return res.status(400).json({
-        success: false,
-        message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
-      });
+      if (alreadyUploaded) {
+        return res.status(400).json({
+          success: false,
+          message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
+        });
+      }
     }
 
     // Auto register to master data if missing
+    const db = await readDB();
     const exists = db.petugas_master.some(p => p.nama.toLowerCase() === nama.trim().toLowerCase());
     if (!exists) {
       db.petugas_master.push({
@@ -340,22 +436,23 @@ app.post('/api/capaian', upload.fields([
         posisi: posisi ? posisi.trim() : 'Petugas Lapangan Sensus (PPL Sensus)',
         kecamatan: kecamatan.trim()
       });
+      await writeDB(db);
     }
 
     const createdItems = [];
 
-    // Helper to add files with specific jenis tag
+    // Helper to add files
     const processFiles = (fileList, jenisTag) => {
       fileList.forEach((file, index) => {
         const base64Data = file.buffer ? file.buffer.toString('base64') : '';
         const dataUri = base64Data ? `data:${file.mimetype};base64,${base64Data}` : '';
 
         const newItem = {
-          id: `capaian_${Date.now()}_${jenisTag}_${index}_${Math.random().toString(36).substr(2, 4)}`,
+          id: `capaian_${Date.now()}_${jenisTag.replace(/[^a-zA-Z0-9]/g, '_')}_${index}_${Math.random().toString(36).substr(2, 4)}`,
           kecamatan: kecamatan.trim(),
           nama: nama.trim(),
           posisi: posisi ? posisi.trim() : 'PPL Sensus',
-          jenis: jenisTag, // 'Capaian Petugas' or 'Hapus Aplikasi FASIH / Periode Sensus'
+          jenis: jenisTag,
           filename: file.filename || file.originalname,
           original_name: file.originalname,
           file_url: dataUri,
@@ -363,7 +460,6 @@ app.post('/api/capaian', upload.fields([
           mimetype: file.mimetype,
           created_at: new Date().toISOString()
         };
-        db.capaian.push(newItem);
         createdItems.push(newItem);
       });
     };
@@ -372,7 +468,36 @@ app.post('/api/capaian', upload.fields([
     processFiles(filesHapus, 'Hapus Aplikasi FASIH / Periode Sensus');
     processFiles(filesGeneral, req.body.jenis || 'Capaian Petugas');
 
-    await writeDB(db);
+    if (useMultiRow) {
+      // Direct Batch Insert into Supabase `capaian_records` table
+      try {
+        const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records`, {
+          method: 'POST',
+          headers: {
+            'apikey': SUPABASE_KEY,
+            'Authorization': `Bearer ${SUPABASE_KEY}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=minimal'
+          },
+          body: JSON.stringify(createdItems)
+        });
+
+        if (!insertRes.ok) {
+          const errText = await insertRes.text();
+          console.error('Failed to insert into capaian_records:', errText);
+          // Fallback
+          db.capaian.push(...createdItems);
+          await writeDB(db);
+        }
+      } catch (err) {
+        console.error('Multi-row insert failed, fallbacking to writeDB:', err);
+        db.capaian.push(...createdItems);
+        await writeDB(db);
+      }
+    } else {
+      db.capaian.push(...createdItems);
+      await writeDB(db);
+    }
 
     console.log(`[DUAL UPLOAD SUCCESS] ${createdItems.length} screenshots uploaded by ${nama} (${kecamatan})`);
 
@@ -391,8 +516,30 @@ app.post('/api/capaian', upload.fields([
 // 5. Delete Single Screenshot
 app.delete('/api/capaian/:id', async (req, res) => {
   const { id } = req.params;
-  const db = await readDB();
+  const useMultiRow = await isMultiRowTableAvailable();
 
+  if (useMultiRow) {
+    try {
+      const delRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?id=eq.${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (delRes.ok) {
+        return res.json({
+          success: true,
+          message: 'Screenshot berhasil dihapus.'
+        });
+      }
+    } catch (err) {
+      console.error('Error deleting multi-row record:', err);
+    }
+  }
+
+  // Fallback delete
+  const db = await readDB();
   const index = db.capaian.findIndex(item => item.id === id);
   if (index === -1) {
     return res.status(404).json({ success: false, message: 'Data capaian tidak ditemukan.' });
@@ -415,20 +562,34 @@ app.delete('/api/capaian-petugas', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Kecamatan dan Nama Petugas harus diisi.' });
   }
 
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      const delRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (delRes.ok) {
+        return res.json({
+          success: true,
+          message: `Seluruh screenshot milik ${nama} (${kecamatan}) berhasil dihapus.`
+        });
+      }
+    } catch (err) {
+      console.error('Error deleting multi-row officer records:', err);
+    }
+  }
+
+  // Fallback delete
   const db = await readDB();
   const toDelete = db.capaian.filter(i => i.kecamatan.toLowerCase() === kecamatan.toLowerCase() && i.nama.toLowerCase() === nama.toLowerCase());
   
   db.capaian = db.capaian.filter(i => !(i.kecamatan.toLowerCase() === kecamatan.toLowerCase() && i.nama.toLowerCase() === nama.toLowerCase()));
   await writeDB(db);
-
-  toDelete.forEach(item => {
-    if (item.filename) {
-      const filePath = path.join(UPLOADS_DIR, item.filename);
-      if (fs.existsSync(filePath)) {
-        fs.unlink(filePath, err => { if (err) console.error(err); });
-      }
-    }
-  });
 
   res.json({
     success: true,
@@ -436,7 +597,7 @@ app.delete('/api/capaian-petugas', async (req, res) => {
   });
 });
 
-// Error handling middleware (e.g. for Multer LIMIT_FILE_SIZE)
+// Error handling middleware
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     if (err.code === 'LIMIT_FILE_SIZE') {
