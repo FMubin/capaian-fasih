@@ -381,7 +381,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // STATUS MONITORING TABLE & SUMMARY RENDERER
   function cleanName(raw) {
     if (!raw) return '';
-    return raw.replace(/\(.*?\)/g, '').trim().toLowerCase();
+    return raw.split('(')[0].replace(/[-_]/g, ' ').trim().toLowerCase();
   }
 
   function renderStatusMonitoring() {
