@@ -379,37 +379,75 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // STATUS MONITORING TABLE & SUMMARY RENDERER
+  function cleanName(raw) {
+    if (!raw) return '';
+    return raw.replace(/\(.*?\)/g, '').trim().toLowerCase();
+  }
+
   function renderStatusMonitoring() {
     if (!masterPetugasList || masterPetugasList.length === 0) return;
 
-    // Create a map of uploaded screenshots by "kecamatan__nama"
-    const uploadedMap = {};
+    // Create maps of uploaded screenshots by "kecamatan__nama" and fallback clean name
+    const uploadedMapByKey = {};
+    const uploadedMapByCleanName = {};
+
     currentItems.forEach(item => {
-      const key = `${(item.kecamatan || '').toLowerCase().trim()}__${(item.nama || '').toLowerCase().trim()}`;
-      if (!uploadedMap[key]) {
-        uploadedMap[key] = {
+      const kKec = (item.kecamatan || '').toLowerCase().trim();
+      const kNama = (item.nama || '').toLowerCase().trim();
+      const fullKey = `${kKec}__${kNama}`;
+      const cName = cleanName(item.nama);
+
+      if (!uploadedMapByKey[fullKey]) {
+        uploadedMapByKey[fullKey] = {
+          fullKey,
+          kecamatan: item.kecamatan,
+          nama: item.nama,
+          posisi: item.posisi || 'PPL Sensus',
           capaianCount: 0,
           hapusCount: 0,
           total: 0,
           lastTime: item.created_at
         };
       }
-      if ((item.jenis || '').includes('Hapus')) {
-        uploadedMap[key].hapusCount++;
-      } else {
-        uploadedMap[key].capaianCount++;
+      if (!uploadedMapByCleanName[cName]) {
+        uploadedMapByCleanName[cName] = uploadedMapByKey[fullKey];
       }
-      uploadedMap[key].total++;
-      if (new Date(item.created_at) > new Date(uploadedMap[key].lastTime)) {
-        uploadedMap[key].lastTime = item.created_at;
+
+      if ((item.jenis || '').includes('Hapus')) {
+        uploadedMapByKey[fullKey].hapusCount++;
+      } else {
+        uploadedMapByKey[fullKey].capaianCount++;
+      }
+      uploadedMapByKey[fullKey].total++;
+      if (new Date(item.created_at) > new Date(uploadedMapByKey[fullKey].lastTime)) {
+        uploadedMapByKey[fullKey].lastTime = item.created_at;
       }
     });
 
+    const usedUploadKeys = new Set();
+
     // Match all master officers against uploadedMap
     const fullStatusList = masterPetugasList.map(p => {
-      const key = `${(p.kecamatan || '').toLowerCase().trim()}__${(p.nama || '').toLowerCase().trim()}`;
-      const uploadData = uploadedMap[key];
+      const kKec = (p.kecamatan || '').toLowerCase().trim();
+      const kNama = (p.nama || '').toLowerCase().trim();
+      const fullKey = `${kKec}__${kNama}`;
+      const cName = cleanName(p.nama);
+
+      let uploadData = null;
+      let matchedKey = null;
+
+      if (uploadedMapByKey[fullKey] && !usedUploadKeys.has(fullKey)) {
+        uploadData = uploadedMapByKey[fullKey];
+        matchedKey = fullKey;
+      } else if (uploadedMapByCleanName[cName] && !usedUploadKeys.has(uploadedMapByCleanName[cName].fullKey)) {
+        uploadData = uploadedMapByCleanName[cName];
+        matchedKey = uploadData.fullKey;
+      }
+
       const isUploaded = Boolean(uploadData && uploadData.total > 0);
+      if (isUploaded && uploadData) {
+        usedUploadKeys.add(matchedKey);
+      }
 
       return {
         nama: p.nama,
@@ -421,6 +459,23 @@ document.addEventListener('DOMContentLoaded', () => {
         totalScreenshots: uploadData ? uploadData.total : 0,
         lastUploadTime: uploadData ? uploadData.lastTime : null
       };
+    });
+
+    // Append any uploaded officers that were not present in master data
+    Object.keys(uploadedMapByKey).forEach(fullKey => {
+      if (!usedUploadKeys.has(fullKey)) {
+        const u = uploadedMapByKey[fullKey];
+        fullStatusList.push({
+          nama: u.nama,
+          posisi: u.posisi || 'PPL Sensus',
+          kecamatan: u.kecamatan,
+          status: 'SUDAH',
+          countCapaian: u.capaianCount,
+          countHapus: u.hapusCount,
+          totalScreenshots: u.total,
+          lastUploadTime: u.lastTime
+        });
+      }
     });
 
     // Summary Card Stats
