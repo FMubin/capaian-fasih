@@ -363,7 +363,7 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAndTriggerPrint(officerItems);
   };
 
-  function buildAndTriggerPrint(itemsToPrint) {
+  async function buildAndTriggerPrint(itemsToPrint) {
     const grouped = {};
     itemsToPrint.forEach(item => {
       const key = `${item.kecamatan}__${item.nama}`;
@@ -471,9 +471,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     printContainer.innerHTML = printHTML;
 
+    // Wait for all print images to load completely into browser memory before triggering print dialog
+    const printImgs = Array.from(printContainer.querySelectorAll('img'));
+    if (printImgs.length > 0) {
+      showToast('Menyiapkan gambar lembar cetak...', 'info');
+      await Promise.all(printImgs.map(img => {
+        if (img.complete && img.naturalWidth !== 0) return Promise.resolve();
+        return new Promise(resolve => {
+          img.onload = resolve;
+          img.onerror = resolve;
+          setTimeout(resolve, 3000); // 3 second maximum fallback timeout
+        });
+      }));
+    }
+
     setTimeout(() => {
       window.print();
-    }, 200);
+    }, 150);
   }
 
   // Delete Handlers
