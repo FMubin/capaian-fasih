@@ -239,11 +239,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let added = 0;
     for (const file of images) {
-      // 1. Check File Size (< 500 KB)
-      const MAX_BYTES = 500 * 1024; // 500 KB
+      // 1. Check Original File Size (< 15 MB)
+      const MAX_BYTES = 15 * 1024 * 1024; // 15 MB
       if (file.size > MAX_BYTES) {
-        const kb = (file.size / 1024).toFixed(1);
-        showToast(`File "${file.name}" ditolak! Ukuran ${kb} KB melebihi batas 500 KB.`, 'danger');
+        const mb = (file.size / (1024 * 1024)).toFixed(1);
+        showToast(`File "${file.name}" ditolak! Ukuran ${mb} MB melebihi batas 15 MB.`, 'danger');
         continue;
       }
 

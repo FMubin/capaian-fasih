@@ -367,7 +367,7 @@ const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 500 * 1024 }, // Max 500 KB
+  limits: { fileSize: 15 * 1024 * 1024 }, // Max 15 MB per file
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|webp|gif/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -779,11 +779,22 @@ app.get('/api/check-status', async (req, res) => {
 });
 
 // 4. Dual Dropzone Upload (Supports zero-dependency Google Drive API + Supabase Storage)
-app.post('/api/capaian', upload.fields([
-  { name: 'files_capaian', maxCount: 20 },
-  { name: 'files_hapus', maxCount: 20 },
-  { name: 'files', maxCount: 20 }
-]), async (req, res) => {
+app.post('/api/capaian', (req, res, next) => {
+  upload.fields([
+    { name: 'files_capaian', maxCount: 20 },
+    { name: 'files_hapus', maxCount: 20 },
+    { name: 'files', maxCount: 20 }
+  ])(req, res, (err) => {
+    if (err) {
+      console.error('[MULTER UPLOAD ERROR]:', err);
+      const msg = err.code === 'LIMIT_FILE_SIZE'
+        ? 'Ukuran file gambar terlalu besar (maksimal 15 MB per file).'
+        : (err.message || 'Terjadi kesalahan saat mengunggah file.');
+      return res.status(400).json({ success: false, message: msg });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const filesCapaian = (req.files && req.files['files_capaian']) || [];
     const filesHapus = (req.files && req.files['files_hapus']) || [];
@@ -801,6 +812,7 @@ app.post('/api/capaian', upload.fields([
       return res.status(400).json({ success: false, message: 'Kecamatan dan Nama Petugas wajib dipilih!' });
     }
 
+    const db = await readDB();
     const useMultiRow = await isMultiRowTableAvailable();
 
     // Reject if officer has ALREADY uploaded
@@ -825,25 +837,24 @@ app.post('/api/capaian', upload.fields([
       } catch (err) {
         console.error('Error checking upload status:', err);
       }
-    } else {
-      const dbCheck = await readDB();
-      const alreadyUploaded = dbCheck.capaian.some(
-        item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
-                item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
-      );
+    }
 
-      if (alreadyUploaded) {
-        return res.status(400).json({
-          success: false,
-          message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
-        });
-      }
+    const alreadyUploaded = (db.capaian || []).some(
+      item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
+              item.kecamatan.toLowerCase() === kecamatan.trim().toLowerCase()
+    );
+
+    if (alreadyUploaded) {
+      return res.status(400).json({
+        success: false,
+        message: `Petugas "${nama}" (${kecamatan}) sudah pernah mengunggah bukti screenshot sebelumnya! Setiap petugas hanya diperbolehkan mengunggah 1 kali.`
+      });
     }
 
     // Auto register to master data if missing
-    const db = await readDB();
-    const exists = db.petugas_master.some(p => p.nama.toLowerCase() === nama.trim().toLowerCase());
+    const exists = (db.petugas_master || []).some(p => p.nama.toLowerCase() === nama.trim().toLowerCase());
     if (!exists) {
+      if (!Array.isArray(db.petugas_master)) db.petugas_master = [];
       db.petugas_master.push({
         nama: nama.trim(),
         posisi: posisi ? posisi.trim() : 'Petugas Lapangan Sensus (PPL Sensus)',
@@ -883,11 +894,11 @@ app.post('/api/capaian', upload.fields([
           nama: nama.trim(),
           posisi: posisi ? posisi.trim() : 'PPL Sensus',
           jenis: jenisTag,
-          filename: file.filename || file.originalname,
-          original_name: file.originalname,
+          filename: file.filename || file.originalname || `screenshot_${index}.webp`,
+          original_name: file.originalname || `screenshot_${index}.webp`,
           file_url: fileUrl,
-          size_bytes: file.size,
-          mimetype: file.mimetype,
+          size_bytes: file.size || 0,
+          mimetype: file.mimetype || 'image/webp',
           created_at: new Date().toISOString()
         };
 
@@ -914,38 +925,19 @@ app.post('/api/capaian', upload.fields([
 
         if (!insertRes.ok) {
           const errText = await insertRes.text();
-          console.error('Failed to insert into capaian_records:', errText);
-          
-          // Retry without drive_file_id property in case column hasn't been added to PostgreSQL schema yet
-          const cleanedItems = createdItems.map(item => {
-            const copy = { ...item };
-            delete copy.drive_file_id;
-            return copy;
-          });
-
-          const retryRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records`, {
-            method: 'POST',
-            headers: {
-              'apikey': SUPABASE_KEY,
-              'Authorization': `Bearer ${SUPABASE_KEY}`,
-              'Content-Type': 'application/json',
-              'Prefer': 'return=minimal'
-            },
-            body: JSON.stringify(cleanedItems)
-          });
-
-          if (!retryRes.ok) {
-            console.error('Retry insert also failed, fallback to legacy DB:', await retryRes.text());
-            db.capaian.push(...createdItems);
-            await writeDB(db);
-          }
+          console.error('Failed to insert into capaian_records, fallbacking to writeDB:', errText);
+          if (!Array.isArray(db.capaian)) db.capaian = [];
+          db.capaian.push(...createdItems);
+          await writeDB(db);
         }
       } catch (err) {
         console.error('Multi-row insert failed, fallbacking to writeDB:', err);
+        if (!Array.isArray(db.capaian)) db.capaian = [];
         db.capaian.push(...createdItems);
         await writeDB(db);
       }
     } else {
+      if (!Array.isArray(db.capaian)) db.capaian = [];
       db.capaian.push(...createdItems);
       await writeDB(db);
     }
