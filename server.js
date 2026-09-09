@@ -59,7 +59,7 @@ function cleanString(str) {
 async function getGoogleAccessToken(clientEmail, privateKey) {
   if (!clientEmail || !privateKey) {
     console.error('[GOOGLE AUTH ERROR]: Missing email or private key');
-    return null;
+    return { token: null, error: 'Missing email or private key in environment variables' };
   }
   try {
     const email = cleanString(clientEmail);
@@ -99,13 +99,13 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
 
     const json = await res.json();
     if (json.access_token) {
-      return json.access_token;
+      return { token: json.access_token, error: null };
     }
     console.error('[GOOGLE AUTH RESPONSE ERROR]:', JSON.stringify(json));
-    return null;
+    return { token: null, error: json.error_description || json.error || JSON.stringify(json) };
   } catch (err) {
     console.error('[GOOGLE AUTH EXCEPTION]:', err && err.message ? err.message : err);
-    return null;
+    return { token: null, error: err && err.message ? err.message : String(err) };
   }
 }
 
@@ -117,8 +117,12 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
   }
 
   try {
-    const accessToken = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
-    if (!accessToken) return null;
+    const authResult = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
+    if (!authResult.token) {
+      console.error('[GOOGLE DRIVE UPLOAD FAILED]: Token error:', authResult.error);
+      return null;
+    }
+    const accessToken = authResult.token;
 
     const folderId = cleanString(GOOGLE_FOLDER_ID);
     const metadata = {
@@ -354,7 +358,48 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 
-// 0. Maintenance Mode API
+// 0. Diagnostic Route to Test Google Drive Connection directly in browser!
+app.get('/api/test-drive', async (req, res) => {
+  const hasEmail = Boolean(GOOGLE_CLIENT_EMAIL);
+  const hasKey = Boolean(GOOGLE_PRIVATE_KEY);
+  const hasFolder = Boolean(GOOGLE_FOLDER_ID);
+
+  if (!hasEmail || !hasKey) {
+    return res.json({
+      success: false,
+      message: 'Environment Variables Google Drive belum lengkap di Vercel.',
+      config: {
+        GOOGLE_DRIVE_CLIENT_EMAIL: hasEmail ? `${GOOGLE_CLIENT_EMAIL.substring(0, 10)}...` : 'MISSING',
+        GOOGLE_DRIVE_PRIVATE_KEY: hasKey ? 'PRESENT' : 'MISSING',
+        GOOGLE_DRIVE_FOLDER_ID: hasFolder ? GOOGLE_FOLDER_ID : 'MISSING'
+      }
+    });
+  }
+
+  const authResult = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
+  if (!authResult.token) {
+    return res.json({
+      success: false,
+      message: 'Gagal mendapatkan OAuth Access Token dari Google Service Account.',
+      error: authResult.error,
+      config: {
+        email: cleanString(GOOGLE_CLIENT_EMAIL),
+        folderId: cleanString(GOOGLE_FOLDER_ID)
+      }
+    });
+  }
+
+  res.json({
+    success: true,
+    message: 'Google Drive API Connection SUCCESSFUL!',
+    config: {
+      email: cleanString(GOOGLE_CLIENT_EMAIL),
+      folderId: cleanString(GOOGLE_FOLDER_ID)
+    }
+  });
+});
+
+// 0.5 Maintenance Mode API
 app.get('/api/maintenance', async (req, res) => {
   const db = await readDB();
   res.json({
