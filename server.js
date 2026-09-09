@@ -39,18 +39,21 @@ const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_DRIVE_PRIVATE_KEY || process.env.G
 const GOOGLE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_FOLDER_ID;
 
 function getGoogleDriveClient() {
-  if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) return null;
+  if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) {
+    console.log('[GOOGLE DRIVE] Credentials missing in environment variables');
+    return null;
+  }
   try {
     const formattedPrivateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
     const auth = new google.auth.JWT(
-      GOOGLE_CLIENT_EMAIL,
+      GOOGLE_CLIENT_EMAIL.trim(),
       null,
       formattedPrivateKey,
       ['https://www.googleapis.com/auth/drive']
     );
     return google.drive({ version: 'v3', auth });
   } catch (err) {
-    console.error('Error initializing Google Drive client:', err);
+    console.error('[GOOGLE DRIVE INIT ERROR]:', err && err.message ? err.message : err);
     return null;
   }
 }
@@ -65,7 +68,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
 
     const fileMetadata = {
       name: filename,
-      parents: GOOGLE_FOLDER_ID ? [GOOGLE_FOLDER_ID] : []
+      parents: GOOGLE_FOLDER_ID ? [GOOGLE_FOLDER_ID.trim()] : []
     };
 
     const media = {
@@ -91,11 +94,13 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
         }
       });
     } catch (permErr) {
-      console.warn('Google Drive permission warning:', permErr);
+      console.warn('[GOOGLE DRIVE PERMISSION WARN]:', permErr && permErr.message ? permErr.message : permErr);
     }
 
     const fileUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
     const viewUrl = response.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+    console.log(`[GOOGLE DRIVE SUCCESS] Uploaded file: ${filename} (ID: ${fileId})`);
 
     return {
       fileId,
@@ -103,7 +108,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
       viewUrl
     };
   } catch (err) {
-    console.error('Google Drive upload error:', err);
+    console.error('[GOOGLE DRIVE UPLOAD ERROR]:', err && err.message ? err.message : err);
     return null;
   }
 }
@@ -534,7 +539,6 @@ app.post('/api/capaian', upload.fields([
           if (driveResult && driveResult.fileUrl) {
             fileUrl = driveResult.fileUrl;
             driveFileId = driveResult.fileId;
-            console.log(`[GOOGLE DRIVE UPLOAD] File uploaded to Drive: ${driveFileId}`);
           }
         }
 
@@ -553,11 +557,15 @@ app.post('/api/capaian', upload.fields([
           filename: file.filename || file.originalname,
           original_name: file.originalname,
           file_url: fileUrl,
-          drive_file_id: driveFileId,
           size_bytes: file.size,
           mimetype: file.mimetype,
           created_at: new Date().toISOString()
         };
+
+        if (driveFileId) {
+          newItem.drive_file_id = driveFileId;
+        }
+
         createdItems.push(newItem);
       }
     };
@@ -582,8 +590,30 @@ app.post('/api/capaian', upload.fields([
         if (!insertRes.ok) {
           const errText = await insertRes.text();
           console.error('Failed to insert into capaian_records:', errText);
-          db.capaian.push(...createdItems);
-          await writeDB(db);
+          
+          // Retry without drive_file_id property in case column hasn't been added to PostgreSQL schema yet
+          const cleanedItems = createdItems.map(item => {
+            const copy = { ...item };
+            delete copy.drive_file_id;
+            return copy;
+          });
+
+          const retryRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records`, {
+            method: 'POST',
+            headers: {
+              'apikey': SUPABASE_KEY,
+              'Authorization': `Bearer ${SUPABASE_KEY}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=minimal'
+            },
+            body: JSON.stringify(cleanedItems)
+          });
+
+          if (!retryRes.ok) {
+            console.error('Retry insert also failed, fallback to legacy DB:', await retryRes.text());
+            db.capaian.push(...createdItems);
+            await writeDB(db);
+          }
         }
       } catch (err) {
         console.error('Multi-row insert failed, fallbacking to writeDB:', err);
