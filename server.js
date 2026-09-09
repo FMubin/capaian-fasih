@@ -367,7 +367,7 @@ const storage = multer.memoryStorage();
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 15 * 1024 * 1024 }, // Max 15 MB per file
+  limits: { fileSize: 15 * 1024 * 1024, files: 200 }, // Max 15 MB per file, up to 200 files total
   fileFilter: (req, file, cb) => {
     const filetypes = /jpeg|jpg|png|webp|gif/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
@@ -781,15 +781,18 @@ app.get('/api/check-status', async (req, res) => {
 // 4. Dual Dropzone Upload (Supports zero-dependency Google Drive API + Supabase Storage)
 app.post('/api/capaian', (req, res, next) => {
   upload.fields([
-    { name: 'files_capaian', maxCount: 20 },
-    { name: 'files_hapus', maxCount: 20 },
-    { name: 'files', maxCount: 20 }
+    { name: 'files_capaian', maxCount: 100 },
+    { name: 'files_hapus', maxCount: 100 },
+    { name: 'files', maxCount: 100 }
   ])(req, res, (err) => {
     if (err) {
       console.error('[MULTER UPLOAD ERROR]:', err);
-      const msg = err.code === 'LIMIT_FILE_SIZE'
-        ? 'Ukuran file gambar terlalu besar (maksimal 15 MB per file).'
-        : (err.message || 'Terjadi kesalahan saat mengunggah file.');
+      let msg = err.message || 'Terjadi kesalahan saat mengunggah file.';
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        msg = 'Ukuran file gambar terlalu besar (maksimal 15 MB per file).';
+      } else if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+        msg = 'Jumlah file screenshot melebihi batas maksimal (maksimal 100 foto per kategori).';
+      }
       return res.status(400).json({ success: false, message: msg });
     }
     next();
