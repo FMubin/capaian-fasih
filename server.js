@@ -37,14 +37,38 @@ const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || process.env
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_DRIVE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
 const GOOGLE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_FOLDER_ID;
 
+function cleanPrivateKey(key) {
+  if (!key) return '';
+  let cleaned = key.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.replace(/\\n/g, '\n').trim();
+}
+
+function cleanString(str) {
+  if (!str) return '';
+  let cleaned = str.trim();
+  if ((cleaned.startsWith('"') && cleaned.endsWith('"')) || (cleaned.startsWith("'") && cleaned.endsWith("'"))) {
+    cleaned = cleaned.slice(1, -1);
+  }
+  return cleaned.trim();
+}
+
 // Zero-dependency Google Service Account JWT OAuth Token Generator
 async function getGoogleAccessToken(clientEmail, privateKey) {
-  if (!clientEmail || !privateKey) return null;
+  if (!clientEmail || !privateKey) {
+    console.error('[GOOGLE AUTH ERROR]: Missing email or private key');
+    return null;
+  }
   try {
+    const email = cleanString(clientEmail);
+    const formattedKey = cleanPrivateKey(privateKey);
+
     const header = { alg: 'RS256', typ: 'JWT' };
     const now = Math.floor(Date.now() / 1000);
     const claimSet = {
-      iss: clientEmail.trim(),
+      iss: email,
       scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive',
       aud: 'https://oauth2.googleapis.com/token',
       exp: now + 3600,
@@ -58,7 +82,6 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
     const encodedClaimSet = base64UrlEncode(claimSet);
     const signatureInput = `${encodedHeader}.${encodedClaimSet}`;
 
-    const formattedKey = privateKey.replace(/\\n/g, '\n').trim();
     const signer = crypto.createSign('RSA-SHA256');
     signer.update(signatureInput);
     const signature = signer.sign(formattedKey, 'base64url');
@@ -78,7 +101,7 @@ async function getGoogleAccessToken(clientEmail, privateKey) {
     if (json.access_token) {
       return json.access_token;
     }
-    console.error('[GOOGLE AUTH ERROR]:', json);
+    console.error('[GOOGLE AUTH RESPONSE ERROR]:', JSON.stringify(json));
     return null;
   } catch (err) {
     console.error('[GOOGLE AUTH EXCEPTION]:', err && err.message ? err.message : err);
@@ -97,9 +120,10 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
     const accessToken = await getGoogleAccessToken(GOOGLE_CLIENT_EMAIL, GOOGLE_PRIVATE_KEY);
     if (!accessToken) return null;
 
+    const folderId = cleanString(GOOGLE_FOLDER_ID);
     const metadata = {
       name: filename,
-      parents: GOOGLE_FOLDER_ID ? [GOOGLE_FOLDER_ID.trim()] : []
+      parents: folderId ? [folderId] : []
     };
 
     const boundary = '-------314159265358979323846';
@@ -130,7 +154,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
 
     const uploadJson = await uploadRes.json();
     if (!uploadJson.id) {
-      console.error('[GOOGLE DRIVE UPLOAD ERROR]:', uploadJson);
+      console.error('[GOOGLE DRIVE UPLOAD ERROR]:', JSON.stringify(uploadJson));
       return null;
     }
 
