@@ -37,6 +37,33 @@ const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || process.env
 const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_DRIVE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
 const GOOGLE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_FOLDER_ID;
 
+// ImgBB Free CDN API Credential (Optional)
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY;
+
+async function uploadToImgBB(buffer, filename) {
+  if (!IMGBB_API_KEY) return { fileUrl: null, error: 'No IMGBB_API_KEY configured' };
+  try {
+    const formData = new URLSearchParams();
+    formData.append('image', buffer.toString('base64'));
+    formData.append('name', filename);
+
+    const res = await fetch(`https://api.imgbb.com/1/upload?key=${cleanString(IMGBB_API_KEY)}`, {
+      method: 'POST',
+      body: formData
+    });
+    const json = await res.json();
+    if (json && json.success && json.data && json.data.url) {
+      console.log(`[IMGBB SUCCESS] Uploaded ${filename} -> ${json.data.url}`);
+      return { fileUrl: json.data.url, displayUrl: json.data.display_url || json.data.url, error: null };
+    }
+    console.error('[IMGBB UPLOAD ERROR]:', JSON.stringify(json));
+    return { fileUrl: null, error: json };
+  } catch (err) {
+    console.error('[IMGBB EXCEPTION]:', err);
+    return { fileUrl: null, error: err && err.message ? err.message : String(err) };
+  }
+}
+
 function cleanPrivateKey(key) {
   if (!key) return '';
   let cleaned = key.trim();
@@ -759,7 +786,18 @@ app.post('/api/capaian', upload.fields([
           }
         }
 
-        // 2. Fallback to Base64 Data URI if Google Drive is not configured or failed
+        // 2. Try ImgBB Free CDN upload if IMGBB_API_KEY is configured
+        if (!fileUrl && file.buffer && IMGBB_API_KEY) {
+          const imgbbResult = await uploadToImgBB(
+            file.buffer,
+            `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`
+          );
+          if (imgbbResult && imgbbResult.fileUrl) {
+            fileUrl = imgbbResult.fileUrl;
+          }
+        }
+
+        // 3. Fallback to Base64 Data URI if Google Drive & ImgBB are not configured or failed
         if (!fileUrl) {
           const base64Data = file.buffer ? file.buffer.toString('base64') : '';
           fileUrl = base64Data ? `data:${file.mimetype};base64,${base64Data}` : '';
