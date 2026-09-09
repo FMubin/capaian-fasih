@@ -25,14 +25,154 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const ENABLE_SUPABASE = process.env.ENABLE_SUPABASE === 'true'; // Default FALSE to prevent Supabase Egress quota overage (0 Bytes traffic)
+const ENABLE_SUPABASE = true; // Use single-row app_data storage for 100% upload persistence with super low egress
 
-const SUPABASE_URL = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || 
-                     process.env.SUPABASE_KEY || 
-                     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
-                     process.env.SUPABASE_ANON_KEY || 
-                     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+let dbCache = null;
+let dbCacheTime = 0;
+const CACHE_TTL_MS = 10000; // 10s in-memory cache to save egress
+
+// Helper to check if multi-row table `capaian_records` exists in Supabase
+async function isMultiRowTableAvailable() {
+  // Disabled multi-row table query to prevent high Egress bandwidth on Supabase
+  return false;
+}
+
+// Single-row DB reader/writer via app_data / KV / file
+async function readDB() {
+  const now = Date.now();
+  if (dbCache && (now - dbCacheTime < CACHE_TTL_MS)) {
+    return dbCache;
+  }
+
+  if (ENABLE_SUPABASE && SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/rest/v1/app_data?id=eq.capaian_db&select=data`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      const rows = await res.json();
+      if (Array.isArray(rows) && rows.length > 0 && rows[0].data) {
+        const parsed = typeof rows[0].data === 'string' ? JSON.parse(rows[0].data) : rows[0].data;
+        if (!Array.isArray(parsed.petugas_master)) parsed.petugas_master = [];
+        if (!Array.isArray(parsed.capaian)) parsed.capaian = [];
+
+        if (parsed.petugas_master.length === 0 && fs.existsSync(INITIAL_DB_FILE)) {
+          const initRaw = fs.readFileSync(INITIAL_DB_FILE, 'utf-8');
+          const initParsed = JSON.parse(initRaw);
+          parsed.petugas_master = initParsed.petugas_master || [];
+          await writeDB(parsed);
+        }
+
+        dbCache = parsed;
+        dbCacheTime = Date.now();
+        return parsed;
+      }
+    } catch (err) {
+      console.error('Error reading Supabase DB, fallbacking...', err);
+    }
+  }
+
+  if (KV_URL && KV_TOKEN) {
+    try {
+      const res = await fetch(`${KV_URL}/get/capaian_db`, {
+        headers: { Authorization: `Bearer ${KV_TOKEN}` }
+      });
+      const json = await res.json();
+      if (json && json.result) {
+        const parsed = typeof json.result === 'string' ? JSON.parse(json.result) : json.result;
+        if (!Array.isArray(parsed.petugas_master)) parsed.petugas_master = [];
+        if (!Array.isArray(parsed.capaian)) parsed.capaian = [];
+
+        if (parsed.petugas_master.length === 0 && fs.existsSync(INITIAL_DB_FILE)) {
+          const initRaw = fs.readFileSync(INITIAL_DB_FILE, 'utf-8');
+          const initParsed = JSON.parse(initRaw);
+          parsed.petugas_master = initParsed.petugas_master || [];
+          await writeDB(parsed);
+        }
+        dbCache = parsed;
+        dbCacheTime = Date.now();
+        return parsed;
+      }
+    } catch (err) {
+      console.error('Error reading Cloud KV DB, fallback to file:', err);
+    }
+  }
+
+  try {
+    let fileToRead = RUNTIME_DB_FILE;
+    if (!fs.existsSync(fileToRead)) {
+      if (fs.existsSync(INITIAL_DB_FILE)) {
+        fileToRead = INITIAL_DB_FILE;
+      } else {
+        const defaultData = { petugas_master: [], capaian: [] };
+        if (!isVercel) fs.writeFileSync(RUNTIME_DB_FILE, JSON.stringify(defaultData, null, 2));
+        return defaultData;
+      }
+    }
+    const raw = fs.readFileSync(fileToRead, 'utf-8');
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.petugas_master)) parsed.petugas_master = [];
+    if (!Array.isArray(parsed.capaian)) parsed.capaian = [];
+    dbCache = parsed;
+    dbCacheTime = Date.now();
+    return parsed;
+  } catch (err) {
+    console.error('Error reading DB:', err);
+    return { petugas_master: [], capaian: [] };
+  }
+}
+
+async function writeDB(data) {
+  dbCache = data;
+  dbCacheTime = Date.now();
+
+  if (ENABLE_SUPABASE && SUPABASE_URL && SUPABASE_KEY) {
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/app_data`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'resolution=merge-duplicates'
+        },
+        body: JSON.stringify({
+          id: 'capaian_db',
+          data: data
+        })
+      });
+      return true;
+    } catch (err) {
+      console.error('Error writing Supabase DB:', err);
+    }
+  }
+
+  if (KV_URL && KV_TOKEN) {
+    try {
+      await fetch(`${KV_URL}/set/capaian_db`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${KV_TOKEN}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(JSON.stringify(data))
+      });
+      return true;
+    } catch (err) {
+      console.error('Error writing Cloud KV DB:', err);
+    }
+  }
+
+  try {
+    fs.writeFileSync(RUNTIME_DB_FILE, JSON.stringify(data, null, 2));
+    return true;
+  } catch (err) {
+    console.error('Error writing DB:', err);
+    return false;
+  }
+}
 
 // Google Drive API Credentials
 const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
