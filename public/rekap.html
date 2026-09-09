@@ -10,6 +10,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+  <!-- JSZip & FileSaver for Client-side ZIP Compression -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/file-saver.js/2.0.5/FileSaver.min.js"></script>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body class="bg-rekap-page">
@@ -47,7 +50,10 @@
           </div>
         </div>
 
-        <div style="display: flex; gap: 0.5rem;">
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <button type="button" id="btnDownloadFiltered" class="btn-print" style="background: #0284c7;">
+            <i class="fa-solid fa-file-zipper"></i> Unduh Massal (.ZIP)
+          </button>
           <button type="button" id="btnPrintAll" class="btn-print" style="background: #10b981;">
             <i class="fa-solid fa-print"></i> Cetak Seluruh Rekap Petugas
           </button>
