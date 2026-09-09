@@ -482,14 +482,68 @@ app.post('/api/petugas', async (req, res) => {
   });
 });
 
-// 3. Get All Capaian Screenshots
+// 2.9 Stream Single Image by ID with 1-Year Browser Caching to prevent Egress overconsumption
+app.get('/api/capaian/image/:id', async (req, res) => {
+  const { id } = req.params;
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      const response = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?id=eq.${encodeURIComponent(id)}&select=file_url`, {
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (response.ok) {
+        const rows = await response.json();
+        if (rows.length > 0 && rows[0].file_url) {
+          const fileUrl = rows[0].file_url;
+          if (fileUrl.startsWith('data:')) {
+            const matches = fileUrl.match(/^data:(.+?);base64,(.+)$/);
+            if (matches) {
+              const contentType = matches[1];
+              const imgBuffer = Buffer.from(matches[2], 'base64');
+              res.setHeader('Content-Type', contentType);
+              res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+              return res.send(imgBuffer);
+            }
+          }
+          return res.redirect(fileUrl);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching image by ID:', err);
+    }
+  }
+
+  // Fallback DB
+  const db = await readDB();
+  const item = (db.capaian || []).find(c => c.id === id);
+  if (item && item.file_url) {
+    if (item.file_url.startsWith('data:')) {
+      const matches = item.file_url.match(/^data:(.+?);base64,(.+)$/);
+      if (matches) {
+        res.setHeader('Content-Type', matches[1]);
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        return res.send(Buffer.from(matches[2], 'base64'));
+      }
+    }
+    return res.redirect(item.file_url);
+  }
+
+  res.status(404).send('Gambar tidak ditemukan.');
+});
+
+// 3. Get All Capaian Screenshots (Lightweight Metadata Proxy - 0% Heavy Base64 Transfer)
 app.get('/api/capaian', async (req, res) => {
   const { kecamatan, search } = req.query;
   const useMultiRow = await isMultiRowTableAvailable();
 
   if (useMultiRow) {
     try {
-      let queryUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=*&order=created_at.desc`;
+      // Query ONLY metadata fields to save 99.9% network bandwidth & eliminate Supabase Egress quota spikes
+      let queryUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=id,kecamatan,nama,posisi,jenis,created_at,drive_file_id&order=created_at.desc`;
       if (kecamatan && kecamatan !== 'SEMUA') {
         queryUrl += `&kecamatan=ilike.${encodeURIComponent(kecamatan)}`;
       }
@@ -510,6 +564,15 @@ app.get('/api/capaian', async (req, res) => {
             (item.kecamatan && item.kecamatan.toLowerCase().includes(q))
           );
         }
+
+        // Map file_url to lazy proxy endpoint or Google Drive direct thumbnail
+        list = list.map(item => ({
+          ...item,
+          file_url: item.drive_file_id
+            ? `https://drive.google.com/thumbnail?id=${item.drive_file_id}&sz=w1000`
+            : `/api/capaian/image/${item.id}`
+        }));
+
         return res.json({
           success: true,
           total: list.length,
@@ -539,6 +602,16 @@ app.get('/api/capaian', async (req, res) => {
   }
 
   list.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  list = list.map(item => {
+    if (item.file_url && item.file_url.startsWith('data:')) {
+      return {
+        ...item,
+        file_url: `/api/capaian/image/${item.id}`
+      };
+    }
+    return item;
+  });
 
   res.json({
     success: true,
