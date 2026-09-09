@@ -891,10 +891,6 @@ app.post('/api/capaian', upload.fields([
           created_at: new Date().toISOString()
         };
 
-        if (driveFileId) {
-          newItem.drive_file_id = driveFileId;
-        }
-
         createdItems.push(newItem);
       }
     };
