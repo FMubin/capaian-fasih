@@ -3,6 +3,8 @@ const cors = require('cors');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const stream = require('stream');
+const { google } = require('googleapis');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -30,6 +32,81 @@ const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ||
                      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 
                      process.env.SUPABASE_ANON_KEY || 
                      process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+// Google Drive API Credentials
+const GOOGLE_CLIENT_EMAIL = process.env.GOOGLE_DRIVE_CLIENT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL;
+const GOOGLE_PRIVATE_KEY = process.env.GOOGLE_DRIVE_PRIVATE_KEY || process.env.GOOGLE_PRIVATE_KEY;
+const GOOGLE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID || process.env.GOOGLE_FOLDER_ID;
+
+function getGoogleDriveClient() {
+  if (!GOOGLE_CLIENT_EMAIL || !GOOGLE_PRIVATE_KEY) return null;
+  try {
+    const formattedPrivateKey = GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n');
+    const auth = new google.auth.JWT(
+      GOOGLE_CLIENT_EMAIL,
+      null,
+      formattedPrivateKey,
+      ['https://www.googleapis.com/auth/drive']
+    );
+    return google.drive({ version: 'v3', auth });
+  } catch (err) {
+    console.error('Error initializing Google Drive client:', err);
+    return null;
+  }
+}
+
+async function uploadToGoogleDrive(buffer, filename, mimetype) {
+  const drive = getGoogleDriveClient();
+  if (!drive) return null;
+
+  try {
+    const bufferStream = new stream.PassThrough();
+    bufferStream.end(buffer);
+
+    const fileMetadata = {
+      name: filename,
+      parents: GOOGLE_FOLDER_ID ? [GOOGLE_FOLDER_ID] : []
+    };
+
+    const media = {
+      mimeType: mimetype,
+      body: bufferStream
+    };
+
+    const response = await drive.files.create({
+      requestBody: fileMetadata,
+      media: media,
+      fields: 'id, webViewLink, webContentLink, thumbnailLink'
+    });
+
+    const fileId = response.data.id;
+
+    // Grant public read permission to file
+    try {
+      await drive.permissions.create({
+        fileId: fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone'
+        }
+      });
+    } catch (permErr) {
+      console.warn('Google Drive permission warning:', permErr);
+    }
+
+    const fileUrl = `https://drive.google.com/thumbnail?id=${fileId}&sz=w1000`;
+    const viewUrl = response.data.webViewLink || `https://drive.google.com/file/d/${fileId}/view`;
+
+    return {
+      fileId,
+      fileUrl,
+      viewUrl
+    };
+  } catch (err) {
+    console.error('Google Drive upload error:', err);
+    return null;
+  }
+}
 
 // Helper to check if multi-row table `capaian_records` exists in Supabase
 async function isMultiRowTableAvailable() {
@@ -256,7 +333,7 @@ app.post('/api/petugas', async (req, res) => {
   });
 });
 
-// 3. Get All Capaian Screenshots (Supports multi-row Supabase table with legacy fallback)
+// 3. Get All Capaian Screenshots
 app.get('/api/capaian', async (req, res) => {
   const { kecamatan, search } = req.query;
   const useMultiRow = await isMultiRowTableAvailable();
@@ -295,7 +372,7 @@ app.get('/api/capaian', async (req, res) => {
     }
   }
 
-  // Fallback to legacy single JSON
+  // Fallback
   const db = await readDB();
   let list = db.capaian || [];
 
@@ -351,7 +428,6 @@ app.get('/api/check-status', async (req, res) => {
     }
   }
 
-  // Fallback check
   const db = await readDB();
   const exists = db.capaian.some(
     item => item.nama.toLowerCase() === nama.trim().toLowerCase() &&
@@ -365,7 +441,7 @@ app.get('/api/check-status', async (req, res) => {
   });
 });
 
-// 4. Dual Dropzone Upload (Accepts files_capaian and files_hapus simultaneously!)
+// 4. Dual Dropzone Upload (Supports Google Drive API + Supabase Storage)
 app.post('/api/capaian', upload.fields([
   { name: 'files_capaian', maxCount: 20 },
   { name: 'files_hapus', maxCount: 20 },
@@ -390,7 +466,7 @@ app.post('/api/capaian', upload.fields([
 
     const useMultiRow = await isMultiRowTableAvailable();
 
-    // Check if officer already uploaded
+    // Reject if officer has ALREADY uploaded
     if (useMultiRow) {
       try {
         const checkUrl = `${SUPABASE_URL}/rest/v1/capaian_records?select=id&kecamatan=ilike.${encodeURIComponent(kecamatan)}&nama=ilike.${encodeURIComponent(nama)}&limit=1`;
@@ -441,11 +517,32 @@ app.post('/api/capaian', upload.fields([
 
     const createdItems = [];
 
-    // Helper to add files
-    const processFiles = (fileList, jenisTag) => {
-      fileList.forEach((file, index) => {
-        const base64Data = file.buffer ? file.buffer.toString('base64') : '';
-        const dataUri = base64Data ? `data:${file.mimetype};base64,${base64Data}` : '';
+    // Helper to process and upload files (prefers Google Drive API, falls back to Base64)
+    const processFiles = async (fileList, jenisTag) => {
+      for (let index = 0; index < fileList.length; index++) {
+        const file = fileList[index];
+        let fileUrl = '';
+        let driveFileId = null;
+
+        // 1. Try Google Drive Upload if API configured
+        if (file.buffer) {
+          const driveResult = await uploadToGoogleDrive(
+            file.buffer,
+            `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`,
+            file.mimetype || 'image/webp'
+          );
+          if (driveResult && driveResult.fileUrl) {
+            fileUrl = driveResult.fileUrl;
+            driveFileId = driveResult.fileId;
+            console.log(`[GOOGLE DRIVE UPLOAD] File uploaded to Drive: ${driveFileId}`);
+          }
+        }
+
+        // 2. Fallback to Base64 Data URI if Google Drive is not configured or failed
+        if (!fileUrl) {
+          const base64Data = file.buffer ? file.buffer.toString('base64') : '';
+          fileUrl = base64Data ? `data:${file.mimetype};base64,${base64Data}` : '';
+        }
 
         const newItem = {
           id: `capaian_${Date.now()}_${jenisTag.replace(/[^a-zA-Z0-9]/g, '_')}_${index}_${Math.random().toString(36).substr(2, 4)}`,
@@ -455,21 +552,21 @@ app.post('/api/capaian', upload.fields([
           jenis: jenisTag,
           filename: file.filename || file.originalname,
           original_name: file.originalname,
-          file_url: dataUri,
+          file_url: fileUrl,
+          drive_file_id: driveFileId,
           size_bytes: file.size,
           mimetype: file.mimetype,
           created_at: new Date().toISOString()
         };
         createdItems.push(newItem);
-      });
+      }
     };
 
-    processFiles(filesCapaian, 'Capaian Petugas');
-    processFiles(filesHapus, 'Hapus Aplikasi FASIH / Periode Sensus');
-    processFiles(filesGeneral, req.body.jenis || 'Capaian Petugas');
+    await processFiles(filesCapaian, 'Capaian Petugas');
+    await processFiles(filesHapus, 'Hapus Aplikasi FASIH / Periode Sensus');
+    await processFiles(filesGeneral, req.body.jenis || 'Capaian Petugas');
 
     if (useMultiRow) {
-      // Direct Batch Insert into Supabase `capaian_records` table
       try {
         const insertRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records`, {
           method: 'POST',
@@ -485,7 +582,6 @@ app.post('/api/capaian', upload.fields([
         if (!insertRes.ok) {
           const errText = await insertRes.text();
           console.error('Failed to insert into capaian_records:', errText);
-          // Fallback
           db.capaian.push(...createdItems);
           await writeDB(db);
         }
@@ -499,7 +595,7 @@ app.post('/api/capaian', upload.fields([
       await writeDB(db);
     }
 
-    console.log(`[DUAL UPLOAD SUCCESS] ${createdItems.length} screenshots uploaded by ${nama} (${kecamatan})`);
+    console.log(`[DUAL UPLOAD SUCCESS] ${createdItems.length} screenshots uploaded for ${nama} (${kecamatan})`);
 
     res.json({
       success: true,
@@ -538,7 +634,6 @@ app.delete('/api/capaian/:id', async (req, res) => {
     }
   }
 
-  // Fallback delete
   const db = await readDB();
   const index = db.capaian.findIndex(item => item.id === id);
   if (index === -1) {
@@ -584,7 +679,6 @@ app.delete('/api/capaian-petugas', async (req, res) => {
     }
   }
 
-  // Fallback delete
   const db = await readDB();
   const toDelete = db.capaian.filter(i => i.kecamatan.toLowerCase() === kecamatan.toLowerCase() && i.nama.toLowerCase() === nama.toLowerCase());
   
