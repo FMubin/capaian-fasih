@@ -135,7 +135,7 @@ document.addEventListener('DOMContentLoaded', () => {
         masterPetugasList = json.data || [];
         kecamatanList = json.kecamatan || [];
         populateKecamatanDropdown();
-        renderStatusMonitoring();
+        if (currentTab === 'status') renderStatusMonitoring();
       }
     } catch (err) {
       console.error('Failed to fetch master data:', err);
@@ -167,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (json.success) {
         currentItems = json.data;
         groupOfficersAndRender(currentItems);
-        renderStatusMonitoring();
+        if (currentTab === 'status') renderStatusMonitoring();
       }
     } catch (err) {
       console.error('Failed to fetch list:', err);

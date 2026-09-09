@@ -25,7 +25,7 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const ENABLE_SUPABASE = true; // Use single-row app_data storage for 100% upload persistence with super low egress
+const ENABLE_SUPABASE = process.env.ENABLE_SUPABASE === 'true'; // Default FALSE for instant 10ms speed and 0 Supabase latency
 
 let dbCache = null;
 let dbCacheTime = 0;
