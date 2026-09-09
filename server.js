@@ -146,7 +146,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
       Buffer.from(closeDelimiter)
     ]);
 
-    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+    const uploadRes = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&supportsTeamDrives=true&fields=id,webViewLink', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${accessToken}`,
@@ -166,7 +166,7 @@ async function uploadToGoogleDrive(buffer, filename, mimetype) {
 
     // Grant public read permission to file
     try {
-      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions`, {
+      await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}/permissions?supportsAllDrives=true`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${accessToken}`,
