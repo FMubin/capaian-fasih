@@ -25,11 +25,11 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const ENABLE_SUPABASE = process.env.ENABLE_SUPABASE === 'true'; // Default FALSE for instant 10ms speed and 0 Supabase latency
+const ENABLE_SUPABASE = true; // 100% Connected to Supabase Cloud DB with smart 3s caching for super fast response
 
 let dbCache = null;
 let dbCacheTime = 0;
-const CACHE_TTL_MS = 10000; // 10s in-memory cache to save egress
+const CACHE_TTL_MS = 3000; // 3s smart cache for fast Supabase reads and quick updates
 
 // Helper to check if multi-row table `capaian_records` exists in Supabase
 async function isMultiRowTableAvailable() {
