@@ -368,6 +368,71 @@ document.addEventListener('DOMContentLoaded', () => {
     buildAndTriggerPrint(currentItems);
   });
 
+  // Hapus Data Screenshot Berdasarkan Kecamatan yang Difilter
+  const btnDeleteKecamatan = document.getElementById('btnDeleteKecamatan');
+  if (btnDeleteKecamatan) {
+    btnDeleteKecamatan.addEventListener('click', async () => {
+      const selectedKec = filterKecamatan.value;
+      if (!selectedKec || selectedKec === 'SEMUA') {
+        showToast('Pilih kecamatan spesifik terlebih dahulu pada dropdown filter!', 'danger');
+        filterKecamatan.focus();
+        return;
+      }
+
+      const confirmMsg = `PERINGATAN: Apakah Anda yakin ingin menghapus SELURUH screenshot milik SEMUA PETUGAS di Kecamatan "${selectedKec}"?\n\nTindakan ini tidak dapat dibatalkan!`;
+      if (!confirm(confirmMsg)) return;
+
+      try {
+        const res = await fetch('/api/capaian-kecamatan', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kecamatan: selectedKec })
+        });
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message, 'success');
+          fetchCapaianList();
+        } else {
+          showToast(json.message || 'Gagal menghapus data kecamatan', 'danger');
+        }
+      } catch (err) {
+        showToast('Terjadi kesalahan saat menghapus data kecamatan', 'danger');
+      }
+    });
+  }
+
+  // Hapus SELURUH Data Screenshot di Aplikasi (Hapus Semua)
+  const btnDeleteAll = document.getElementById('btnDeleteAll');
+  if (btnDeleteAll) {
+    btnDeleteAll.addEventListener('click', async () => {
+      const confirm1 = confirm('⚠️ PERINGATAN BAHAYA!\n\nApakah Anda benar-benar yakin ingin MENGHAPUS SELURUH DATA SCREENSHOT (SEMUA KECAMATAN & SEMUA PETUGAS)?\n\nSemua bukti screenshot yang pernah diunggah akan TERHAPUS PERMANEN!');
+      if (!confirm1) return;
+
+      const confirmText = prompt('Ketik kata "HAPUS" (huruf kapital) di bawah ini untuk mengonfirmasi penghapusan seluruh data:');
+      if (confirmText !== 'HAPUS') {
+        showToast('Penghapusan dibatalkan. Kata konfirmasi tidak sesuai.', 'info');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/capaian-all', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmText: 'HAPUS' })
+        });
+        const json = await res.json();
+        if (json.success) {
+          showToast(json.message, 'success');
+          fetchCapaianList();
+        } else {
+          showToast(json.message || 'Gagal menghapus seluruh data', 'danger');
+        }
+      } catch (err) {
+        showToast('Terjadi kesalahan server saat menghapus seluruh data', 'danger');
+      }
+    });
+  }
+
   window.printSingleOfficerReport = function(kecamatan, nama) {
     const officerItems = currentItems.filter(i => i.kecamatan.toLowerCase() === kecamatan.toLowerCase() && i.nama.toLowerCase() === nama.toLowerCase());
     if (officerItems.length === 0) return;

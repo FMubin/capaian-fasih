@@ -1038,6 +1038,88 @@ app.delete('/api/capaian-petugas', async (req, res) => {
   });
 });
 
+// 7. Delete All Screenshots for a specific Kecamatan
+app.delete('/api/capaian-kecamatan', async (req, res) => {
+  const { kecamatan } = req.body;
+  if (!kecamatan || kecamatan === 'SEMUA') {
+    return res.status(400).json({ success: false, message: 'Kecamatan spesifik harus dipilih.' });
+  }
+
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      const delRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?kecamatan=ilike.${encodeURIComponent(kecamatan)}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (delRes.ok) {
+        const db = await readDB();
+        db.capaian = (db.capaian || []).filter(i => i.kecamatan.toLowerCase() !== kecamatan.toLowerCase());
+        await writeDB(db);
+
+        return res.json({
+          success: true,
+          message: `Seluruh data screenshot untuk Kecamatan "${kecamatan}" berhasil dihapus.`
+        });
+      }
+    } catch (err) {
+      console.error('Error deleting kecamatan records:', err);
+    }
+  }
+
+  const db = await readDB();
+  const initialCount = (db.capaian || []).length;
+  db.capaian = (db.capaian || []).filter(i => i.kecamatan.toLowerCase() !== kecamatan.toLowerCase());
+  const deletedCount = initialCount - db.capaian.length;
+  await writeDB(db);
+
+  res.json({
+    success: true,
+    message: `Berhasil menghapus ${deletedCount} screenshot di Kecamatan "${kecamatan}".`
+  });
+});
+
+// 8. Delete ALL Screenshots Across Entire Database
+app.delete('/api/capaian-all', async (req, res) => {
+  const { confirmText } = req.body;
+  if (confirmText !== 'HAPUS') {
+    return res.status(400).json({ success: false, message: 'Konfirmasi tidak valid. Harus mengetik HAPUS.' });
+  }
+
+  const useMultiRow = await isMultiRowTableAvailable();
+
+  if (useMultiRow) {
+    try {
+      const delRes = await fetch(`${SUPABASE_URL}/rest/v1/capaian_records?id=not.is.null`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_KEY,
+          'Authorization': `Bearer ${SUPABASE_KEY}`
+        }
+      });
+      if (!delRes.ok) {
+        console.error('Failed to delete all from capaian_records:', await delRes.text());
+      }
+    } catch (err) {
+      console.error('Error deleting all multi-row records:', err);
+    }
+  }
+
+  const db = await readDB();
+  const count = (db.capaian || []).length;
+  db.capaian = [];
+  await writeDB(db);
+
+  res.json({
+    success: true,
+    message: `Seluruh data screenshot (${count} data) di aplikasi berhasil dihapus bersih.`
+  });
+});
+
 // Error handling middleware
 app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
