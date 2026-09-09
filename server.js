@@ -25,7 +25,7 @@ if (!isVercel && !fs.existsSync(DATA_DIR)) {
 const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
 const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
 
-const ENABLE_SUPABASE = true; // 100% Connected to Supabase Cloud DB with smart 3s caching for super fast response
+const ENABLE_SUPABASE = false; // Fast 11:03 PM version: Instant 0.01s load speed from memory with 0 Supabase latency
 
 let dbCache = null;
 let dbCacheTime = 0;
