@@ -990,7 +990,6 @@ app.post('/api/capaian', (req, res, next) => {
       return res.status(400).json({ success: false, message: 'Kecamatan dan Nama Petugas wajib dipilih!' });
     }
 
-    const db = await readDB();
     const useMultiRow = await isMultiRowTableAvailable();
 
     // Reject if officer has ALREADY uploaded
