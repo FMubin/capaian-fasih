@@ -531,6 +531,27 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // API Routes
 
+// 0. Maintenance Status & Control API
+app.get('/api/maintenance', async (req, res) => {
+  const db = await readDB();
+  const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : true;
+  res.json({ success: true, maintenance: isMaint });
+});
+
+app.post('/api/maintenance', async (req, res) => {
+  const { enabled } = req.body;
+  const db = await readDB();
+  db.maintenance = Boolean(enabled);
+  await writeDB(db);
+  res.json({
+    success: true,
+    maintenance: db.maintenance,
+    message: db.maintenance
+      ? 'Mode Pemeliharaan (Maintenance) BERHASIL DIAKTIFKAN. System ditutup total.'
+      : 'Mode Pemeliharaan (Maintenance) NONAKTIF. Form upload terbuka kembali.'
+  });
+});
+
 // 0. Diagnostic Route to Test Google Drive Connection & Upload directly in browser!
 app.get('/api/test-drive', async (req, res) => {
   const hasEmail = Boolean(GOOGLE_CLIENT_EMAIL);
@@ -944,6 +965,15 @@ app.post('/api/capaian', (req, res, next) => {
   });
 }, async (req, res) => {
   try {
+    const db = await readDB();
+    const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : true;
+    if (isMaint) {
+      return res.status(403).json({
+        success: false,
+        message: 'Mohon maaf, sistem upload bukti screenshot saat ini SEDANG DITUTUP TOTAL untuk pemeliharaan sistem BPS Pandeglang.'
+      });
+    }
+
     const filesCapaian = (req.files && req.files['files_capaian']) || [];
     const filesHapus = (req.files && req.files['files_hapus']) || [];
     const filesGeneral = (req.files && req.files['files']) || [];
