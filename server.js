@@ -1042,14 +1042,28 @@ app.post('/api/capaian', (req, res, next) => {
 
     const createdItems = [];
 
-    // Helper to process and upload files directly into Supabase as compressed Base64 (or ImgBB if configured)
+    // Helper to process and upload files directly to Google Drive, ImgBB, or Base64 DB
     const processFiles = async (fileList, jenisTag) => {
       for (let index = 0; index < fileList.length; index++) {
         const file = fileList[index];
         let fileUrl = '';
+        let driveFileId = null;
 
-        // 1. Try ImgBB Free CDN upload if IMGBB_API_KEY is configured
-        if (file.buffer && IMGBB_API_KEY) {
+        // 1. Try Google Drive API upload first if Service Account credentials exist
+        if (file.buffer && GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY) {
+          const driveResult = await uploadToGoogleDrive(
+            file.buffer,
+            `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`,
+            file.mimetype || 'image/webp'
+          );
+          if (driveResult && driveResult.fileUrl) {
+            fileUrl = driveResult.fileUrl;
+            driveFileId = driveResult.fileId;
+          }
+        }
+
+        // 2. Try ImgBB Free CDN upload if IMGBB_API_KEY is configured
+        if (!fileUrl && file.buffer && IMGBB_API_KEY) {
           const imgbbResult = await uploadToImgBB(
             file.buffer,
             `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`
@@ -1059,7 +1073,7 @@ app.post('/api/capaian', (req, res, next) => {
           }
         }
 
-        // 2. Default to compressed Base64 Data URI directly stored in Supabase DB
+        // 3. Default to compressed Base64 Data URI directly stored in DB
         if (!fileUrl && file.buffer) {
           const base64Data = file.buffer.toString('base64');
           fileUrl = `data:${file.mimetype || 'image/webp'};base64,${base64Data}`;
@@ -1074,6 +1088,7 @@ app.post('/api/capaian', (req, res, next) => {
           filename: file.filename || file.originalname || `screenshot_${index}.webp`,
           original_name: file.originalname || `screenshot_${index}.webp`,
           file_url: fileUrl,
+          drive_file_id: driveFileId,
           size_bytes: file.size || 0,
           mimetype: file.mimetype || 'image/webp',
           created_at: new Date().toISOString()
