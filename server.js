@@ -534,7 +534,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // 0. Maintenance Status & Control API
 app.get('/api/maintenance', async (req, res) => {
   const db = await readDB();
-  const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : true;
+  const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : false;
   res.json({ success: true, maintenance: isMaint });
 });
 
@@ -966,7 +966,7 @@ app.post('/api/capaian', (req, res, next) => {
 }, async (req, res) => {
   try {
     const db = await readDB();
-    const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : true;
+    const isMaint = typeof db.maintenance === 'boolean' ? db.maintenance : false;
     if (isMaint) {
       return res.status(403).json({
         success: false,
