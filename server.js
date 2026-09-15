@@ -1049,16 +1049,23 @@ app.post('/api/capaian', (req, res, next) => {
         let fileUrl = '';
         let driveFileId = null;
 
-        // 1. Try Google Drive API upload first if Service Account credentials exist
+        // 1. Try Google Drive API upload first if Service Account credentials exist (with 2.5s fast timeout)
         if (file.buffer && GOOGLE_CLIENT_EMAIL && GOOGLE_PRIVATE_KEY) {
-          const driveResult = await uploadToGoogleDrive(
-            file.buffer,
-            `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`,
-            file.mimetype || 'image/webp'
-          );
-          if (driveResult && driveResult.fileUrl) {
-            fileUrl = driveResult.fileUrl;
-            driveFileId = driveResult.fileId;
+          try {
+            const driveResult = await Promise.race([
+              uploadToGoogleDrive(
+                file.buffer,
+                `[${jenisTag}] ${nama.trim()}_${file.originalname || `screenshot_${index}.webp`}`,
+                file.mimetype || 'image/webp'
+              ),
+              new Promise(resolve => setTimeout(() => resolve({ fileId: null, error: 'timeout' }), 2500))
+            ]);
+            if (driveResult && driveResult.fileUrl) {
+              fileUrl = driveResult.fileUrl;
+              driveFileId = driveResult.fileId;
+            }
+          } catch (driveErr) {
+            console.error('[DRIVE FAST FAILOVER]:', driveErr);
           }
         }
 
