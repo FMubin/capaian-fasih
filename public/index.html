@@ -127,30 +127,31 @@
   <div id="maintenanceOverlay" class="maintenance-overlay hidden">
     <div class="maintenance-card">
       <div class="maintenance-icon-wrapper">
-        <i class="fa-solid fa-screwdriver-wrench icon-tool"></i>
-        <i class="fa-solid fa-gear fa-spin icon-gear"></i>
+        <i class="fa-solid fa-triangle-exclamation icon-tool" style="color: #ef4444;"></i>
+        <i class="fa-solid fa-ban icon-gear" style="color: #dc2626;"></i>
       </div>
       
-      <span class="badge-maintenance">🛠️ PEMELIHARAAN SISTEM</span>
+      <span class="badge-maintenance" style="background: #fef2f2; color: #dc2626; border: 1px solid #fca5a5;">⛔ AKSES DITUTUP SEMENTARA</span>
       
-      <h1 class="maintenance-title">Website Dalam Pemeliharaan! 🚀</h1>
+      <h1 class="maintenance-title" style="color: #991b1b;">Web Sedang Down & Tidak Bisa Diakses! ⚠️</h1>
       
-      <p class="maintenance-quote">
-        "Mohon bersabar ya temen-temen petugas PPL & PML Sensus... <br>
-        Tim IT BPS lagi ngeracik & poles sistem biar makin <strong>wush-wush, stabil & ngebut!</strong> ⚡"
+      <p class="maintenance-quote" style="background: #fff1f2; border-left: 4px solid #e11d48; color: #881337;">
+        <strong>PEMBERITAHUAN:</strong><br>
+        Form pengunggahan screenshot Capaian & Hapus FASIH saat ini <strong>ditutup total</strong>.<br>
+        Sistem sedang mengalami pemeliharaan / down. Mohon tidak melakukan pengunggahan data saat ini.
       </p>
       
       <div class="maintenance-progress-bar">
-        <div class="progress-fill"></div>
+        <div class="progress-fill" style="background: linear-gradient(90deg, #ef4444, #dc2626);"></div>
       </div>
       
       <p class="maintenance-subtext">
-        ☕ Sambil nunggu, silakan nyeduh kopi atau istirahat sejenak.<br>
-        Form upload akan terbuka otomatis begitu perbaikan selesai!
+        Silakan hubungi Penanggung Jawab / Admin jika ada kendala lebih lanjut.<br>
+        Halaman akan otomatis dapat digunakan kembali jika pemeliharaan selesai.
       </p>
       
-      <button type="button" class="btn-refresh-maint" onclick="location.reload()">
-        <i class="fa-solid fa-arrows-rotate"></i> Cek Status Terbaru
+      <button type="button" class="btn-refresh-maint" onclick="location.reload()" style="background: #dc2626;">
+        <i class="fa-solid fa-arrows-rotate"></i> Cek Status Server
       </button>
     </div>
   </div>
